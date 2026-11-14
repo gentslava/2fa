@@ -24,9 +24,6 @@
     "scripting",
     "sidePanel"
   ],
-  "externally_connectable": {
-    "matches": ["https://www.authenticator.sh/*", "https://authenticator.sh/*"]
-  },
   "side_panel": {
     "default_path": "sidepanel.html"
   },
@@ -42,5 +39,8 @@
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' data: blob: https://time.akamai.com https://timeapi.io https://cloudflare.com;"
   }
 }

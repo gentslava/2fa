@@ -71,15 +71,6 @@ export const WHATS_NEW: Record<string, UpdateHighlightKey[]> = {
   // someone in trouble. This one does: the daily copies have existed since
   // 1.10.0 and nothing could reach them, so nobody knew they were there.
   '1.13.2': ['update.feature.restoreBackups'],
-  // 1.14.0 has no entry on purpose: it ships the paywall dark, and everyone who
-  // updates predates it, so there is nothing new for them to be shown — Pro is
-  // not announced inside the extension. What the extension now sends is said
-  // where it has to be: the privacy policy, the README and the store listing.
-  //
-  // 1.15.0 has no entry either: its one change for everyone, the second
-  // style, is in Settings for whoever looks, and cloud backup is Pro, which is
-  // not announced inside the extension.
-  //
   // 1.15.2 is a patch number with a modal, because it changes how the list is
   // handled every day. The right-click menu first: it is where most of the rest
   // is found. Then groups, which until now could only be set one account at a

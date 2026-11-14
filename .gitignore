@@ -30,7 +30,6 @@ coverage/
 # Playwright: the extension build the e2e suite loads (never dist/, which
 # holds the last release build), and what a run leaves behind.
 .e2e-build/
-.stack-build/
 test-results/
 playwright-report/
 

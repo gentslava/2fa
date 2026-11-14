@@ -25,10 +25,6 @@ import { VaultSetupModal } from '@/components/VaultSetupModal';
 import { EmptyStateGuide, type GuidePath } from '@/components/EmptyStateGuide';
 import { AccountsUnavailable } from '@/components/AccountsUnavailable';
 import { RestoreBackups, RestoreOffer } from '@/components/RestoreBackups';
-import { CloudBackupSettings } from '@/components/CloudBackupSettings';
-import { CloudSyncIndicator } from '@/components/CloudSyncIndicator';
-import { ServerBanner } from '@/components/ServerBanner';
-import { NotificationBell } from '@/components/NotificationBell';
 import { GroupFilter } from '@/components/GroupFilter';
 import { SupportFooter } from '@/components/SupportFooter';
 import {
@@ -60,22 +56,12 @@ import { addMultipleAccounts, getAccounts, type GroupPlacement } from '@/utils/s
 import { listBackupSummaries, type BackupSummary } from '@/utils/auto-backup';
 import { shouldShowBackupReminder, markBackupDone } from '@/utils/backup-reminder';
 import { shouldShowVaultPrompt, markVaultPromptShown } from '@/utils/vault-prompt';
-import { describeImport, importErrorKind, importErrorMessage } from '@/utils/import-message';
+import { describeImport, importErrorMessage } from '@/utils/import-message';
 import { confirmDialog, dismissToast, promptDialog, subscribe as subscribeFeedback, toast } from '@/utils/ui-feedback';
 import { useStableCallback } from '@/hooks/useStableCallback';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { StylePicker } from '@/components/StylePicker';
 import { FeedbackHost } from '@/components/FeedbackHost';
-import { PaywallHost } from '@/components/PaywallHost';
-import { ProSettings } from '@/components/ProSettings';
-import { addWithLimit } from '@/billing/add';
-import { subscribePaywall } from '@/billing/bridge';
-import { dismissHeldAdd, finishHeldAdd, heldAddToMention } from '@/billing/held-add';
-import { BILLING_KEYS, recentlySawPaywall } from '@/billing/state';
-import { countOpen } from '@/billing/opens';
-import { reasonOfKey, reportAddCancel, reportAddFail, reportAddStep, reportFirstOpen, reportOnboardView, watchOnboardScreen } from '@/billing/onboarding';
-import { openedBySite } from '@/utils/site-opened';
-import { hasPendingCheckout, syncBilling } from '@/billing/sync';
 import { recordOpen, shouldShowReviewPrompt, snoozeReviewPrompt } from '@/utils/review-prompt';
 import { clearUpdateBadge } from '@/utils/update-badge';
 import { readActiveGroup, rememberActiveGroup, forgetActiveGroup } from '@/utils/active-group';
@@ -86,7 +72,7 @@ import { decodeQrFromImage } from '@/utils/qr-decode';
 import { cleanSecret, isSteamAccount, loadTimeOffset, tryGenerateTOTP } from '@/utils/totp';
 import { useEscapeLayer } from '@/hooks/useLayer';
 import { isOwnPublicSite, isOwnSite, pageWorthScanning } from '@/utils/screen-capture';
-import { checkSite, countCodeUse, isSiteWarnEnabled, reportSiteWarn, reportSiteWarnAnswer, setSiteWarnEnabled, trustSite } from '@/utils/site-check';
+import { checkSite, isSiteWarnEnabled, setSiteWarnEnabled, trustSite } from '@/utils/site-check';
 import { getSiteSuggestions, getBaseDomain, areSuggestionsEnabled, setSuggestionsEnabled } from '@/utils/suggestions';
 import { hasExactSite, normalizeSite, pageHost, toggleSite } from '@/utils/account-sites';
 import { isQuickFillEnabled, readFillRequest, setQuickFillEnabled } from '@/utils/quick-fill';
@@ -186,8 +172,6 @@ function App() {
   const [addTab, setAddTab] = useState<'manual' | 'qr'>('qr');
   /** The add dialog opens by scanning the page behind it (the first-run guide's own scan). */
   const [addScan, setAddScan] = useState(false);
-  /** Opened by the welcome page, not by a click on the icon: no activeTab, so no capture of the tab. */
-  const [openedBySiteState, setOpenedBySiteState] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // Which branch of the first-run guide is open. Lives here, not in the guide,
   // because the header names it and holds the way back, as it does for Settings.
@@ -228,7 +212,6 @@ function App() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('manual');
   /** A confirmation or prompt is up — the page under it goes inert like under any overlay. */
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
   // Seeded from the synchronous mirror so the window opens at the chosen size
   // instead of resizing once chrome.storage answers.
   const [popupSize, setPopupSize] = useState<PopupSize>(cachedPopupSize);
@@ -242,11 +225,11 @@ function App() {
   const [pageScan, setPageScan] = useState<'pending' | 'yes' | 'no' | 'self'>('pending');
   // The popup decides from its own tab (pageWorthScanning). The window and the
   // side panel cannot read one, and neither can a popup.html open as a tab;
-  // they go by the welcome page's mark, and by the site the window was handed.
+  // they go by the site the window was handed.
   const canScanPage =
     HOST === 'popup' && pageScan !== 'self'
       ? pageScan === 'yes'
-      : !openedBySiteState && !(currentDomain && isOwnSite(currentDomain));
+      : !(currentDomain && isOwnSite(currentDomain));
   // Best first. Several only when the user tied several accounts to this site
   // themselves (`explicit`); a guess is always one.
   const [siteSuggestion, setSiteSuggestion] = useState<{ ids: string[]; explicit: boolean }>({ ids: [], explicit: false });
@@ -281,10 +264,6 @@ function App() {
   const headerBackRef = useRef<HTMLButtonElement>(null);
   /** The "Deleted · Undo" toast on screen, if any — it holds a whole account, secret included. */
   const undoToastRef = useRef<number | null>(null);
-  /** The last single add the free limit stopped — still on the add screen when the page outlived Checkout. */
-  const blockedAddIdRef = useRef<string | null>(null);
-  /** The first billing check-in of this page has had its answer: what is still waiting can be said. */
-  const firstBillingSyncDone = useRef(false);
 
   // Load saved preferences
   useEffect(() => {
@@ -332,29 +311,6 @@ function App() {
   // never happened and the extension could never find this window again.
   useEffect(() => {
     if (HOST === 'window') void claimPopoutWindow();
-  }, []);
-
-  // Counted for the admin's "opened the extension" (billing/opens.ts): every
-  // open of the popup, and a side panel or window coming back into view after
-  // half an hour away — those stay open for days, and coming back is a use.
-  useEffect(() => {
-    void countOpen();
-    void openedBySite().then(site => {
-      setOpenedBySiteState(site);
-      void reportFirstOpen(site);
-    });
-    if (HOST === 'popup') return;
-    let hiddenAt: number | null = null;
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        hiddenAt = Date.now();
-        return;
-      }
-      if (hiddenAt !== null && Date.now() - hiddenAt >= 30 * 60_000) void countOpen();
-      hiddenAt = null;
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   // Separate from the preferences read above: where this one lives depends on
@@ -680,42 +636,8 @@ function App() {
   // to itself, and the branch stays open underneath for the way back.
   const guidePath = !showSettings && listView === 'empty' ? openGuidePath : null;
 
-  // "Add your first account" on screen: reported once per open (billing/onboarding.ts).
-  const onboardSeen = useRef(false);
-  useEffect(() => {
-    if (listView !== 'empty' || showSettings || onboardSeen.current) return;
-    onboardSeen.current = true;
-    void openedBySite().then(site => reportOnboardView(site));
-  }, [listView, showSettings]);
-
-  // The question itself on screen — not a branch of it, Settings or the add
-  // dialog over it — watched for how long, and how it ends (billing/onboarding.ts).
-  // A reload of the list is not leaving it: the popup reloads once as it opens,
-  // a few dozen milliseconds in, and every first look ended there as "away".
-  const chooserWasOnScreen = useRef(false);
-  const chooserOnScreen =
-    listView === 'loading'
-      ? chooserWasOnScreen.current
-      : listView === 'empty' && !showSettings && !openGuidePath && !showAddModal;
-  chooserWasOnScreen.current = chooserOnScreen;
-  const chooserLeftFor = useRef<'settings' | 'add' | 'away'>('away');
-  chooserLeftFor.current = showSettings ? 'settings' : showAddModal ? 'add' : 'away';
-  useEffect(() => {
-    if (!chooserOnScreen) return;
-    let stop: ReturnType<typeof watchOnboardScreen> | null = null;
-    let gone = false;
-    void openedBySite().then(site => {
-      if (!gone) stop = watchOnboardScreen(site);
-    });
-    return () => {
-      gone = true;
-      stop?.(chooserLeftFor.current);
-    };
-  }, [chooserOnScreen]);
-
   /** Back out of a branch of the guide, from its own button or the header's arrow. */
   const leaveGuidePath = () => {
-    if (openGuidePath) void reportAddCancel('guide', openGuidePath.id);
     setOpenGuidePath(null);
   };
 
@@ -796,23 +718,14 @@ function App() {
     }
   }, [loading, activeGroup, groups, ungroupedCount, vaultHidingAccounts]);
 
-  /**
-   * False when the free limit stopped the add and the person left the
-   * paywall without Pro: the add screen stays open with what they typed.
-   */
+  /** Add or upgrade an account, preserving duplicate detection and batch order. */
   const handleAddAccount = async (
     account: Account | Account[],
     batch?: { index: number; total: number },
-    unsupported = 0,
-    via: 'form' | 'qr' = 'form'
+    unsupported = 0
   ): Promise<boolean> => {
     if (Array.isArray(account)) {
-      const added = await addWithLimit('migration', origin => addMultipleAccounts(account, origin, { continuesBatch: (batch?.index ?? 1) > 1 }));
-      if (!added) {
-        void reportAddFail('qr', 'limit');
-        return false;
-      }
-      if (added.added === 0 && !added.updated) void reportAddFail('qr', 'all_already_here');
+      const added = await addMultipleAccounts(account, { continuesBatch: (batch?.index ?? 1) > 1 });
       const result = { ...added, unsupported };
       reload();
       revealAccount(account[0]);
@@ -829,20 +742,11 @@ function App() {
       );
       return true;
     }
-    // Kept if the person goes on to Checkout, and added once Pro is on: in the
-    // popup this page is gone by then, and with it what was typed or scanned.
-    const added = await addWithLimit(via, origin => addAccount(account, origin), { hold: [account] });
-    const flow = via === 'qr' ? 'qr' : 'manual';
-    if (added === null) {
-      blockedAddIdRef.current = account.id;
-      void reportAddFail(flow, 'limit');
-      return false;
-    }
+    const added = await addAccount(account);
     // A seed already in the list is skipped, and saying "Account added" over
     // a list that did not change sends the user looking for a row that is
     // not there.
     if (!added) {
-      void reportAddFail(flow, 'duplicate');
       toast('info', t('accounts.alreadyExists'));
       return true;
     }
@@ -851,11 +755,7 @@ function App() {
     return true;
   };
 
-  /**
-   * The + button and the empty list's "Add account". Opens even with no room
-   * left: the limit is met on Add, once the account is typed or scanned
-   * (handleAddAccount), and nothing on the way there mentions it.
-   */
+  /** Open the form or scanner. */
   const openAddAccount = (tab: 'manual' | 'qr' = 'qr', scan = false) => {
     setAddTab(tab);
     setAddScan(scan);
@@ -879,8 +779,7 @@ function App() {
    */
   const undoDelete = async (account: Account, previousIds: string[]) => {
     try {
-      // Never counted against the limit: putting back what was just deleted.
-      const added = await addAccount(account, { kind: 'undo' });
+      const added = await addAccount(account);
       if (added) {
         const order = restoredOrder((await getAccounts()).map(a => a.id), account.id, previousIds);
         // Best-effort: the account is back either way, and at the top of the
@@ -1101,7 +1000,7 @@ function App() {
    */
   const undoDeleteMany = async (restored: Account[], previousIds: string[]) => {
     try {
-      await addMultipleAccounts(restored, { kind: 'undo' });
+      await addMultipleAccounts(restored);
       const order = orderAfterUndo((await getAccounts()).map(a => a.id), previousIds);
       if (order) await reorderAccounts(order).catch(error => console.warn('Could not restore the order:', error));
       toast('success', t('accounts.restored'));
@@ -1178,7 +1077,6 @@ function App() {
       }
     }
     if (warning && host) {
-      reportSiteWarn('copy', warning);
       const page = pageHost(host);
       const proceed = await confirmDialog({
         title: t('siteWarn.title'),
@@ -1190,11 +1088,9 @@ function App() {
         cancelLabel: t('siteWarn.cancel'),
         danger: true,
       });
-      reportSiteWarnAnswer('copy', warning, proceed);
       if (!proceed) return false;
       await trustSite(host, account.id).catch(() => {});
     }
-    void countCodeUse('copy', host, account, !!warning);
     return true;
   });
 
@@ -1371,15 +1267,13 @@ function App() {
   });
 
   const handleImportClick = () => {
-    void reportAddStep('import', 'picker');
     importInputRef.current?.click();
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Cleared on every way out, so the same file can be picked again — after
-    // turning on Pro in the paywall it stopped, the likeliest next step.
+    // Cleared on every way out so the same file can be picked again.
     const input = e.target;
     try {
       await importFile(file);
@@ -1388,13 +1282,8 @@ function App() {
     }
   };
 
-  const importLinks = async (text: string, flow: 'import' | 'paste') => {
-    const outcome = await addWithLimit('uri', origin => importURIList(text, language, origin));
-    if (!outcome) {
-      void reportAddFail(flow, 'limit');
-      return;
-    }
-    if (outcome.kind === 'error' || !outcome.added) void reportAddFail(flow, outcome.kind === 'error' ? 'links_error' : 'links_nothing_added');
+  const importLinks = async (text: string) => {
+    const outcome = await importURIList(text, language);
     if (outcome.added !== undefined) {
       await markBackupDone((await getAccounts()).length);
       setShowBackupReminder(false);
@@ -1415,15 +1304,12 @@ function App() {
       cancelLabel: t('common.cancel'),
     });
     if (!text || !text.trim()) {
-      void reportAddCancel('paste', 'dialog');
       return;
     }
-    void reportAddStep('paste', 'submitted');
     try {
-      await importLinks(text, 'paste');
+      await importLinks(text);
     } catch (error) {
       console.error('Import failed:', error);
-      void reportAddFail('paste', importErrorKind(error));
       toast('error', importErrorMessage(error, language));
     }
   };
@@ -1433,15 +1319,12 @@ function App() {
 
     try {
       if (file.type.startsWith('image/')) {
-        void reportAddStep('import', 'image');
         await handleQRImport(file);
       } else if (((text = await file.text()), looksLikeURIList(text))) {
         // The .txt this extension writes has to come back in through the input
         // the onboarding points at, not only through the one in Settings.
-        void reportAddStep('import', 'links');
-        await importLinks(text, 'import');
+        await importLinks(text);
       } else {
-        void reportAddStep('import', 'backup');
         const imported = await importBackupText(text, app =>
           promptDialog({
             title: t('import.passwordTitle'),
@@ -1453,9 +1336,6 @@ function App() {
           file.name,
           file
         );
-        // Null: the password prompt cancelled, or the paywall closed — the two are not told apart here.
-        if (!imported) void reportAddCancel('import', 'backup_stopped');
-        else if (!imported.added && !(imported as { updated?: number }).updated) void reportAddFail('import', 'backup_nothing_added');
         if (imported) {
           const currentAccounts = await getAccounts();
           await markBackupDone(currentAccounts.length);
@@ -1469,7 +1349,6 @@ function App() {
       }
     } catch (error) {
       console.error('Import failed:', error);
-      void reportAddFail('import', importErrorKind(error));
       // The same wording as Settings → Import: an encrypted Aegis or 2FAS
       // export, or an Alibaba Cloud backup, each needs its own next step.
       toast('error', importErrorMessage(error, language));
@@ -1486,12 +1365,10 @@ function App() {
       // that sentence used to be the toast: "The source image could not be
       // decoded.", in English, whatever language the popup was in.
       console.error('Could not open the image:', error);
-      void reportAddFail('import', 'image_unreadable');
       toast('error', t('import.imageUnreadable'));
       return;
     }
     if (!text) {
-      void reportAddFail('import', 'no_qr');
       toast('error', t('addAccount.errorNoQr'));
       return;
     }
@@ -1501,14 +1378,12 @@ function App() {
       parsed = parseQRCode(text);
     } catch (error) {
       console.error('QR import failed:', error);
-      void reportAddFail('import', reasonOfKey(qrFailureKey(text, error)));
       // Understood, and refused on purpose — saying "invalid QR" here would
       // send the user off to re-export a code that can never work.
       toast('error', t(qrFailureKey(text, error)));
       return;
     }
     if (!parsed) {
-      void reportAddFail('import', reasonOfKey(qrFailureKey(text)));
       toast('error', t(qrFailureKey(text)));
       return;
     }
@@ -1530,18 +1405,10 @@ function App() {
     try {
       const migration = parsed.type === 'migration';
       const continuesBatch = migration && (parsed.batch?.index ?? 1) > 1;
-      const added = await addWithLimit(migration ? 'migration' : 'qr', origin => addMultipleAccounts(accountsToAdd, origin, { continuesBatch }), {
-        hold: migration ? undefined : accountsToAdd,
-      });
-      if (!added) {
-        void reportAddFail('import', 'limit');
-        return;
-      }
-      if (added.added === 0 && !added.updated) void reportAddFail('import', 'all_already_here');
+      const added = await addMultipleAccounts(accountsToAdd, { continuesBatch });
       result = { ...added, unsupported: parsed.skipped ?? 0 };
     } catch (error) {
       console.error('Could not save the scanned accounts:', error);
-      void reportAddFail('import', 'save_failed');
       toast('error', saveErrorMessage(error, t));
       return;
     }
@@ -1565,25 +1432,12 @@ function App() {
   // it stayed live: Tab walked out of "Delete account?" into the list behind
   // it, and a screen reader could read and press the rows it was covering.
   const overlayOpen = Boolean(
-    showAddModal || editingAccount || sharingAccount || showVaultSetup || whatsNewVersion || dialogOpen || paywallOpen
+    showAddModal || editingAccount || sharingAccount || showVaultSetup || whatsNewVersion || dialogOpen
   );
   /** A right-click menu or the selection bar's list is open — it has the keys. */
   const menuOpen = cardMenu !== null || selectionMenu !== null;
 
   useEffect(() => subscribeFeedback(state => setDialogOpen(state.dialog !== null)), []);
-  useEffect(
-    () =>
-      subscribePaywall(request => {
-        setPaywallOpen(request !== null);
-        // No rating ask right after the money ask — also when one was already
-        // on screen before the paywall opened.
-        if (request) {
-          setShowReviewPrompt(false);
-        }
-      }),
-    []
-  );
-
   // Edit and Share each hold a whole decrypted account for as long as they are
   // open — secret included — and an idle lock in a window or side panel
   // arrives while one of them is. useAccounts drops its own copies; these are
@@ -1682,11 +1536,7 @@ function App() {
   // exactly like "never finished setup", which is who the prompt must skip.
   useEffect(() => {
     if (loading || openCount === null) return;
-    // Not in the week after a paywall: asking for a rating straight after
-    // asking for money reads as the same request twice.
-    Promise.all([shouldShowReviewPrompt(openCount, accounts.length), recentlySawPaywall()]).then(([due, paywalled]) =>
-      setShowReviewPrompt(due && !paywalled)
-    );
+    shouldShowReviewPrompt(openCount, accounts.length).then(setShowReviewPrompt);
   }, [loading, openCount, accounts.length]);
 
   const handleSnoozeReview = async () => {
@@ -1736,8 +1586,6 @@ function App() {
   // three without once seeing the offer.
   const vaultPromptVisible =
     showVaultPrompt && !showBackupReminder && !error && timeOffsetSec === null && !showSettings;
-  // The server's vault banner asks what VaultPrompt asks, so never both at once.
-  const offersVaultBanner = vault.enabled === false && accounts.length > 0 && !vaultPromptVisible;
   const vaultPromptCounted = useRef(false);
   useEffect(() => {
     if (!vaultPromptVisible || vaultPromptCounted.current) return;
@@ -1745,89 +1593,9 @@ function App() {
     markVaultPromptShown();
   }, [vaultPromptVisible]);
 
-  /**
-   * The account a blocked add was adding when the person went to Checkout
-   * (billing/held-add.ts): added once Pro is on, and said so. Until then,
-   * after this page's first check-in, the person is told once that it is
-   * waiting, with the way to let it go. Nothing while the vault is locked —
-   * the add waits for the unlock.
-   */
-  const settleHeldAdd = useStableCallback(async () => {
-    if (vault.enabled === null || (vault.enabled && vault.locked)) return;
-    const done = await finishHeldAdd();
-    if (done) {
-      if (done.added + done.updated === 0) return;
-      reload();
-      revealAccount(done.accounts[0]);
-      // Still on the add screen with that same account (side panel, floating
-      // window): it is in the list now, so the screen has done its job.
-      if (showAddModal && done.accounts.some(a => a.id === blockedAddIdRef.current)) setShowAddModal(false);
-      toast('success', t('billing.heldAdded', accountLabel(done.accounts[0]!)));
-      return;
-    }
-    if (!firstBillingSyncDone.current) return;
-    const waiting = await heldAddToMention();
-    if (!waiting) return;
-    toast('info', t('billing.heldWaiting', accountLabel(waiting[0]!)), {
-      action: { label: t('billing.heldDiscard'), run: () => void dismissHeldAdd() },
-    });
-  });
-
-  // Pro arriving — from this page's check-in, a key typed in another window,
-  // the service worker — is what finishes it.
-  useEffect(() => {
-    if (!chrome.storage?.onChanged?.addListener) return;
-    const onChanged = (changes: Record<string, { newValue?: unknown }>, areaName: string) => {
-      if (areaName === 'local' && changes[BILLING_KEYS.entitlement]?.newValue) void settleHeldAdd();
-    };
-    chrome.storage.onChanged.addListener(onChanged);
-    return () => chrome.storage.onChanged.removeListener(onChanged);
-  }, [settleHeldAdd]);
-
-  // And so is an unlock, if Pro came while the vault was locked.
-  useEffect(() => {
-    if (vault.enabled === false || (vault.enabled === true && !vault.locked)) void settleHeldAdd();
-  }, [vault.enabled, vault.locked, settleHeldAdd]);
-
-  // The daily billing check-in, after the list is on screen — never before it.
-  // A purchase started from this install is looked for on every open for a
-  // day, and again whenever this page comes back into view: in the side panel
-  // or the floating window the person returns here from the checkout tab.
-  useEffect(() => {
-    const run = async () => {
-      await syncBilling({ force: await hasPendingCheckout() });
-      firstBillingSyncDone.current = true;
-      await settleHeldAdd();
-    };
-    const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
-    const handle = idle ? idle(() => void run()) : window.setTimeout(() => void run(), 500);
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      void hasPendingCheckout().then(pending => {
-        if (pending) void syncBilling({ force: true });
-      });
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
-    return () => {
-      if (!idle) window.clearTimeout(handle);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
-    };
-  }, []);
-
   // Opens the settings panel rather than exporting straight away: since 1.10.0
   // the user has to choose between a password-protected and a plain file, and
   // silently writing the plain one would undo the vault for anyone who enabled it.
-  /** The header's cloud: Settings, scrolled to cloud backup. */
-  const openCloudBackup = () => {
-    setShowSettings(true);
-    // After the panel has rendered: it is not in the page until then.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => document.getElementById('cloud-backup')?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
-    );
-  };
-
   const handleBackupFromReminder = () => {
     setShowSettings(true);
     setShowBackupReminder(false);
@@ -1958,7 +1726,6 @@ function App() {
           <LockScreen language={language} onUnlock={vault.unlock} onRecovered={vault.refresh} />
           <SupportFooter language={language} onLanguageChange={handleLanguageChange} />
           <FeedbackHost />
-          <PaywallHost language={language} />
         </div>
       </div>
     );
@@ -2043,18 +1810,6 @@ function App() {
             </h1>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {/* The server's notifications (NotificationBell), there only while
-                one of them is for this install — the server decides who, new
-                installs included. Not inside a branch of the guide, whose
-                title needs the room. With it the icons are four again, and at
-                320px the longest titles end in an ellipsis. */}
-            {/* Cloud backup's state, there only while it is on here: a tick
-                when synced, like Google Authenticator's cloud. Opens Settings
-                at cloud backup. */}
-            {!guidePath && <CloudSyncIndicator language={language} onOpen={openCloudBackup} />}
-            {!guidePath && (
-              <NotificationBell language={language} offersVault={vault.enabled === false} onVault={() => setShowVaultSetup(true)} />
-            )}
             {/* Not while a branch of the guide is open: someone following steps
                 with a phone in the other hand is not choosing a theme, and the
                 title — a whole sentence there — needs the room. Help and
@@ -2189,12 +1944,6 @@ function App() {
               from the same parts (see SettingsSection). A new setting goes into
               the section it belongs to, not onto the end. */}
           <div className="flex-1 overflow-y-auto p-4 space-y-5">
-            {/* Above everything, when the server's banner stands here (ServerBanner). */}
-            <ServerBanner language={language} place="settings" offersVault={offersVaultBanner} hasAccounts={accounts.length > 0} onVault={() => setShowVaultSetup(true)} />
-
-            {/* First, and only when there is something to say (see ProSettings). */}
-            <ProSettings language={language} />
-
             <VaultSettings
               language={language}
               enabled={vault.enabled === true}
@@ -2216,10 +1965,6 @@ function App() {
               {/* Always here, whatever state the list is in: the copies are most
                   useful to someone who knew about them before they needed them. */}
               <RestoreBackups backups={backups} language={language} onRestored={handleRestored} />
-              <div id="cloud-backup" className="scroll-mt-2">
-                <CloudBackupSettings language={language} onRestored={handleRestored} />
-              </div>
-
               <SettingToggle
                 label={t('settings.sync')}
                 hint={t('settings.syncHint')}
@@ -2569,12 +2314,6 @@ function App() {
           )
         ) : (
           <div data-ui="account-list" className="bg-white dark:bg-dark-800 pb-20">
-            {/* The server's banner, when it stands over the accounts. Not in a
-                filtered view, where it would push the result down, and not
-                under the What's New modal, which is an ask of its own. */}
-            {!isFiltered && whatsNewVersion === null && (
-              <ServerBanner language={language} place="accounts" offersVault={offersVaultBanner} hasAccounts={accounts.length > 0} onVault={() => setShowVaultSetup(true)} />
-            )}
             {suggestedAccounts.length > 0 && (
               <>
                 {/* AccountCard must stay the last child so its own `last:after:hidden`
@@ -2878,7 +2617,6 @@ function App() {
       />
 
       <FeedbackHost />
-      <PaywallHost language={language} />
       </div>
     </div>
   );

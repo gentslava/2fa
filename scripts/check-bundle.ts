@@ -250,37 +250,22 @@ if (workerPath) {
   console.log(`service worker graph: ${[...seen].map(rel).join(", ")}`);
 }
 
-// --- billing: a store build trusts production and nothing else --------------------
-//
-// The signing keys a build trusts and the server it talks to are chosen at
-// build time (src/billing/config.ts, keys.ts). A store build carrying the
-// preview or test key would accept licenses signed by a key that sits in a
-// developer's .secrets folder or in this repository; one pointed at localhost
-// would never reach the server at all. Both are one wrong environment variable
-// away, so the built code is searched for them. Pass `--billing=test` or
-// `--billing=preview` for builds that are meant to carry them.
+// --- privacy: no billing or analytics backend in any build ----------------------
 
 {
-  const billingFlag = process.argv.find(arg => arg.startsWith("--billing="))?.slice("--billing=".length);
-  const allowed = billingFlag ?? (OUT.endsWith(".e2e-build") ? "test" : "production");
-  const forbidden: [string, string][] =
-    allowed === "production"
-      ? [
-          ["test-only", "the test signing key"],
-          ["prev-2026", "the preview signing key"],
-          ["localhost:3100", "the local billing server"],
-          ["127.0.0.1:3199", "the e2e billing server"],
-        ]
-      : [];
-  const scripts = walk(OUT).filter(path => path.endsWith(".js"));
-  for (const [needle, what] of forbidden) {
-    const hit = scripts.find(path => (readText(path) ?? "").includes(needle));
-    if (hit) problem(`store build carries ${what} ("${needle}") in ${rel(hit)}`);
+  const forbidden = ['api.authenticator.sh', 'checkout.stripe.com', 'billing.stripe.com', '__BILLING_'];
+  for (const path of walk(OUT).filter(path => /\.(js|html)$/.test(path))) {
+    const source = readText(path) ?? '';
+    for (const needle of forbidden) {
+      if (source.includes(needle)) problem(`upstream billing or analytics ("${needle}") in ${rel(path)}`);
+    }
   }
-  if (allowed === "production" && !scripts.some(path => (readText(path) ?? "").includes("https://api.authenticator.sh"))) {
-    problem("store build does not talk to https://api.authenticator.sh");
-  }
-  console.log(`billing: checked as a ${allowed} build`);
+  if (manifest?.externally_connectable) problem('websites can connect to the extension');
+  const policy = manifest?.content_security_policy as { extension_pages?: string } | undefined;
+  const connect = policy?.extension_pages?.match(/(?:^|;)\s*connect-src\s+([^;]+)/)?.[1]?.split(/\s+/).sort();
+  const allowed = ["'self'", 'data:', 'blob:', 'https://time.akamai.com', 'https://timeapi.io', 'https://cloudflare.com'].sort();
+  if (JSON.stringify(connect) !== JSON.stringify(allowed)) problem('network policy must allow only local resources and the three clock sources');
+  console.log('privacy: billing absent; network restricted to clock sources');
 }
 
 // --- verdict --------------------------------------------------------------------

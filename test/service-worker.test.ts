@@ -134,13 +134,9 @@ export async function run(): Promise<void> {
     await runSidePanel();
     await runMenuSync();
     await runFrameFallback();
-    await runBilling();
   } finally {
     // The worker is gone once its suite is over, as it is when Chrome stops it.
     dropStorageListenersAfter(listenersBefore);
-    // What its listeners had already started (a billing check-in after an
-    // account write) finishes against the offline fetch, not a later suite's.
-    await new Promise((resolve) => setTimeout(resolve, 100));
     await resetState();
     (globalThis as any).fetch = realFetch;
   }
@@ -248,42 +244,4 @@ async function runFrameFallback(): Promise<void> {
   check('and may not pick a field of its own', top?.args.mayGuess === false, JSON.stringify(top?.args));
   answer = () => 'filled';
   await resetState();
-}
-
-async function runBilling(): Promise<void> {
-  const state = await import('@/billing/state');
-  const realFetch = (globalThis as any).fetch;
-  let syncs = 0;
-  (globalThis as any).fetch = async (url: unknown) => {
-    if (String(url).endsWith('/v1/sync')) syncs += 1;
-    throw new Error('offline');
-  };
-  try {
-    scenario('Accounts from another computer that predate billing arrive after the install');
-    await resetState();
-    const install = await state.ensureInstall({ reason: 'install' });
-    check('the install starts out new', !install.legacy);
-    syncs = 0;
-    // What a computer that never ran 1.14 left in sync, downloaded a moment later.
-    await chrome.storage.sync.set({ authenticator_accounts_0: [{ ...GITHUB, id: 'old-1', createdAt: 1 }] });
-    const turned = await until(() => areas.local.billingInstall?.legacy === true);
-    check('it turns legacy when they arrive', turned && areas.local.billingInstall?.legacySrc === 'sync-accounts', JSON.stringify(areas.local.billingInstall));
-    check('and tells the server at once', await until(() => syncs > 0));
-
-    scenario('A page about to close asks the worker to send its billing events');
-    await resetState();
-    syncs = 0;
-    let answered = false;
-    const message = { type: 'authenticator:billing-sync' };
-    dispatch('runtime.onMessage', message, { id: (chrome.runtime as any).id, url: 'https://example.com/' }, () => (answered = true));
-    await flush();
-    check('not for a web page', !answered && syncs === 0);
-    dispatch('runtime.onMessage', message, { id: (chrome.runtime as any).id, url: 'chrome-extension://test/popup.html' }, () => (answered = true));
-    check('the popup is answered', answered);
-    check('and the check-in is made', await until(() => syncs === 1));
-  } finally {
-    (globalThis as any).fetch = realFetch;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await resetState();
-  }
 }

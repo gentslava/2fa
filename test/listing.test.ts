@@ -73,27 +73,11 @@ export async function run(): Promise<void> {
     JSON.stringify(manifest.host_permissions)
   );
 
-  // 1.14.0 brought a daily check-in with api.authenticator.sh (an anonymous
-  // install id, the number of accounts, three settings, billing events) and a
-  // free limit on new installations that Pro removes. The listing had said the
-  // opposite in fifty-five languages: nothing is sent, there is no server, no
-  // analytics, no paid tier. Each of those was true when it was written, and
-  // each would now be an inaccurate representation. The English sentences are
-  // pinned here by their exact words, so they cannot drift back in.
-  scenario('The listing no longer promises what billing made untrue');
-  for (const phrase of ['no paid tier', 'sends nothing about you', 'No analytics', 'no server to trust']) {
-    check(`the English listing no longer says "${phrase}"`, !english.includes(phrase));
-  }
-
-  // The other languages cannot be read here, but the plan's name is not
-  // translated in any of them, so a description without "Pro" is one where the
-  // free-plan and network passages were never rewritten. It has to be the word,
-  // not the letters: "Projekt", "Proč" and "Proširenje" were already in the old
-  // German, Czech and Croatian text. Only Latin letters count as a neighbour,
-  // because Arabic and Amharic attach their prepositions to it ("وPro", "የPro").
+  scenario('The fork does not advertise paid plans or automatic telemetry');
   const PRO = /(?<!\p{Script=Latin})Pro(?!\p{Script=Latin})/u;
-  const withoutPro = locales.filter(locale => !PRO.test(listingOf(locale)));
-  check('every locale\'s description names the Pro plan', withoutPro.length === 0, withoutPro.join(', '));
+  check('no locale advertises Pro', locales.every(locale => !PRO.test(listingOf(locale))));
+  check('the English listing promises no paid tier', english.includes('no paid tier'));
+  check('the English listing promises no analytics', english.includes('No analytics'));
 
   // Chrome falls back to the default locale for a missing message without a
   // word, so a key added to English alone ships as English everywhere — which

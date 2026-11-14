@@ -11,6 +11,7 @@ installMocks();
 
 const suites = [
   ['totp and parsers', () => import('./totp.test')],
+  ['privacy and unlimited accounts', () => import('./privacy.test')],
   ['vault', () => import('./vault.test')],
   ['data-loss', () => import('./dataloss.test')],
   ['suggestions', () => import('./suggestions.test')],
@@ -22,8 +23,6 @@ const suites = [
   ['groups', () => import('./groups.test')],
   ['recovery', () => import('./recovery.test')],
   ['restoring an automatic copy', () => import('./restore.test')],
-  ['cloud backup', () => import('./cloud-backup.test')],
-  ['cloud sync between devices', () => import('./cloud-sync.test')],
   ['review prompt', () => import('./review-prompt.test')],
   ['backup reminder', () => import('./backup-reminder.test')],
   ['time sync', () => import('./time-sync.test')],
@@ -47,8 +46,6 @@ const suites = [
   ['language detection', () => import('./i18n.test')],
   ['what the popup puts on screen', () => import('./ui-state.test')],
   ['toasts, dialogs, Escape and the order of the list', () => import('./ui-feedback.test')],
-  ['the free limit, the license and what leaves the machine', () => import('./billing.test')],
-  ['the way to a first account', () => import('./onboarding.test')],
   ['why a camera is refused', () => import('./camera-denial.test')],
   ['what is wrong with a refused secret', () => import('./secret-problem.test')],
   ['the store listing against the manifest', () => import('./listing.test')],

@@ -2,7 +2,7 @@
 
 <img src=".github/assets/banner.png" alt="Authenticator" width="360">
 
-**TOTP codes in Chrome. Your secrets never leave your device. No host permissions.**
+**TOTP codes in Chrome. No billing, no analytics, no account limit.**
 
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ebhcbenbgjmaebpgbldimndmfomjmphd?label=chrome%20web%20store&color=4285f4)](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd)
 [![Users](https://img.shields.io/chrome-web-store/users/ebhcbenbgjmaebpgbldimndmfomjmphd?label=users&color=4285f4)](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd)
@@ -22,7 +22,7 @@
 
 </div>
 
-A privacy-focused TOTP authenticator for Chrome. Your secrets, account names and codes never leave your device: accounts are stored by the browser, and optionally synced through your own Google account — see [Where your data lives](#where-your-data-lives). The extension does check in with our server once a day with an anonymous install id and a handful of numbers, for the free plan and Pro — see [What is sent to our server](#what-is-sent-to-our-server).
+A privacy-focused TOTP authenticator for Chrome. This fork removes upstream's Pro billing, server-controlled account limits, telemetry, remote banners and hosted cloud backups. Accounts stay in browser storage, with optional sync through your own Google account — see [Where your data lives](#where-your-data-lives). No installation identifier or authentication usage is sent to the upstream operator.
 
 ## Features
 
@@ -65,7 +65,7 @@ A privacy-focused TOTP authenticator for Chrome. Your secrets, account names and
   interchange format other password managers and authenticators can read
 - 20 UI languages, chosen from the browser's own language on first open and overridable in Settings
 - Works fully offline — codes never need a connection, and the popup renders before any network request
-- Free to use; new installations may have an account limit, which **Pro** removes (see [Free and Pro](#free-and-pro))
+- Free, with unlimited accounts and no license or server policy checks
 
 ## Permissions
 
@@ -114,7 +114,7 @@ again.
 An account can carry websites, set by hand: Edit Account → Websites, or
 right-click the account with the page open → **Use on** *that site*. They are
 stored as hostnames, `www.` dropped, inside the account record — so password
-protection encrypts them, and exports and cloud backup carry them. A website
+protection encrypts them, and exports carry them. A website
 covers itself and its subdomains, and the most specific one wins: with
 `main.com` on one account and `sub1.main.com` on another, sub1.main.com gets
 only the second, and main.com or sub2.main.com only the first. An account with
@@ -432,20 +432,15 @@ src/
 
 ## Network Access
 
-The extension never sends your secrets, account names, issuers, codes or the sites you use them on in a form we can read — Pro's [cloud backup](#cloud-backup-pro-off-until-you-turn-it-on), if you turn it on, sends your accounts end-to-end encrypted. Two kinds of request happen automatically — the cached clock check and the daily billing check-in, both below — and a third with cloud backup on; everything else happens because you clicked something. In full, the outbound HTTPS calls are:
+The only automatic HTTPS requests made by this fork are cached clock checks against the three time sources below. They contain no account information, installation identifier or usage events. The manifest's `connect-src` policy restricts extension requests to these hosts and local resources; the build check rejects upstream billing endpoints. No welcome or uninstall website opens automatically, and websites cannot message the extension.
+
+Help, sharing and review links are opened only when you choose them. Those pages are external websites, with their own code and privacy policies. Optional Chrome Sync is provided by the browser through your Google account, separately from extension HTTPS requests.
 
 | URL                                         | When                          | Purpose                        |
 |---------------------------------------------|-------------------------------|--------------------------------|
-| `https://www.authenticator.sh/welcome?iid=<install id>` | First install | Opens welcome page in a new tab. The site passes the install id to our server only for a browser that came from one of our ads, to tell which campaign led to installs that went on to use the extension; it never goes to Meta. The page may ask the extension to open its popup — the one message the extension accepts from any web page (`externally_connectable`, authenticator.sh only, `src/background/site-open.ts`); the reply says only whether it opened, and whether its icon is pinned to the toolbar (so the page does not explain the puzzle menu to someone who does not need it) |
-| `https://www.authenticator.sh/uninstall?i=<install id>&s=<stage>` | After uninstall (Chrome API) | Opens feedback page, which reports the removal to our server by that id, with how far a new install got towards a first account (`opened`, `pick:ga`, `fail:camera:camera_denied`…), and links an optional answer to it |
-| `https://api.authenticator.sh/v1/sync`      | Once a day (browser start or popup open, after it has rendered); in a new install's first three days also within minutes of a step towards a first account | Check-in — see [What is sent to our server](#what-is-sent-to-our-server) |
-| `https://api.authenticator.sh/v1/checkout`, `/v1/license/*`, `/v1/portal` | User starts a purchase, enters a key, restores a purchase or manages a subscription | Pro |
-| `https://api.authenticator.sh/v1/backup/*` | Cloud backup is on and the list changed (popup open); Settings → Backup & Restore opened with Pro or with cloud backup on (the list of copies); or the user turns it on or off, backs up, restores or starts over | Pro cloud backup — encrypted copies, see [Cloud backup](#cloud-backup-pro-off-until-you-turn-it-on) |
-| `https://checkout.stripe.com/…`, `https://billing.stripe.com/…` | User starts a purchase or manages a subscription | Stripe Checkout and customer portal, in a new tab |
 | `https://chromewebstore.google.com/.../reviews` | User takes the rating prompt | Opens the Web Store review form |
 | `https://www.authenticator.sh/support`      | User clicks "Help & support"  | Opens the support page         |
 | `https://www.authenticator.sh/faq` (or `/<lang>/faq`) | User clicks the help icon, or "How do I fix this?" on the clock warning | Opens the answers, in the popup's language |
-| `https://chromewebstore.google.com/detail/password-manager/...` | User clicks the cross-promo banner | Opens our other extension's listing |
 | `https://time.akamai.com/?iso`              | Popup open (optional, cached) | Clock drift detection for TOTP |
 | `https://timeapi.io/api/time/current/zone?timeZone=UTC` | Popup open (optional, cached) | Clock drift detection for TOTP |
 | `https://cloudflare.com/cdn-cgi/trace`      | Popup open (optional, cached) | Clock drift detection for TOTP |
@@ -461,138 +456,22 @@ does not disable the check — and when none of them can be reached, Settings
 says so rather than reporting a clock it never measured. No fonts, scripts, or styles are loaded from remote
 hosts — everything needed to render the popup is bundled.
 
-## Free and Pro
+## Fork privacy policy
 
-Installations that existed before billing (1.14.0) keep **unlimited accounts**.
-New installations may have a limit on how many accounts they hold for free —
-our server decides whether there is one and how high it is; **Pro** removes
-it. The limit only ever stops *adding* an account: every account you have
-keeps working, exporting, backing up, restoring and syncing with or without
-Pro, and nothing is ever hidden or locked.
+There is no paid plan, license key, remotely supplied account limit, billing check-in, usage-event queue, remote banner or hosted cloud-backup client. All supported local features work without a license. Imports keep their validation and duplicate protection, without paid-plan limits.
 
-- The limit is checked on your machine from the last policy our server
-  signed, so it works offline: a limit already received still applies without
-  a connection. Until the extension has reached our server once, nothing is
-  limited — and nothing is again once it has not reached it for 14 days, until
-  it does.
-- An account the limit stops on its way to Checkout is kept in memory (see
-  `chrome.storage.session` below) and added by itself once Pro turns on; it is
-  dropped after a day, when the browser closes, or when you choose not to add it.
-- Pro is a license signed by our server (ES256) and checked with WebCrypto
-  against the public key in `src/billing/keys.ts`. A subscription's signed
-  license lasts offline for up to 60 days at a time and is renewed silently
-  whenever the extension is online; it never runs past the paid period plus
-  two weeks (plus one day if renewal was cancelled). A lifetime license lasts
-  half a year at a time, renewed the same way.
-- When Pro is offered to an installation, it appears in **Settings → Pro**.
-  Buying happens on Stripe Checkout in a new tab; Stripe (through Link) is the
-  merchant of record. Pro turns on by itself in the browser you bought it in,
-  which is then sent the license key; while Chrome sync is on, the key goes to
-  Chrome Sync and your other Chrome profiles turn Pro on by themselves. On
-  another computer, enter the license key (`2FA-XXXXX-…`) from the success
-  page or the email under **Settings → Pro**.
-- The code is open source, so the limit is there for honest users — it is not
-  DRM, and a fork can remove it.
+On startup, the service worker removes obsolete upstream billing, telemetry and hosted-backup metadata from local, sync and session storage and clears any previously registered uninstall URL. Account records, vault metadata, local snapshots and preferences are preserved. Synced billing metadata reintroduced by another browser is removed again. Exports contain no installation identifier or billing marker; older backup files still import.
 
-### Cloud backup (Pro, off until you turn it on)
-
-Pro can keep an **end-to-end encrypted** copy of your accounts on our server,
-so losing the computer does not mean losing the codes. It is off until you
-turn it on in **Settings → Backup & Restore**, and it is the only feature that
-sends your accounts to us — encrypted with a key we never see (the daily
-check-in sends only their number).
-
-- Turning it on shows a **backup recovery code** (`XXXXX-XXXXX-XXXXX-XXXXX`,
-  about 101 bits from the browser's random generator) and asks you to type it
-  back before anything is stored; closing the popup meanwhile keeps the same
-  code. The copies are encrypted with AES-256-GCM under a key derived from that
-  code with HKDF-SHA256 (`src/billing/cloud-backup.ts`). The code is kept in
-  this browser and, while Chrome sync is on, in your Google account so your
-  other Chrome profiles can open the same copies. It is never sent to us: we
-  cannot open the copies, and cannot recover them if the code is lost.
-- With password protection on, the stored code is itself encrypted under the
-  vault's key — sealed the moment protection is turned on, opened again when
-  it is turned off — so the copies cannot be fetched and opened from this disk
-  without your password.
-- **One code per license.** The server keeps the current code's `kid` (a short
-  hash that tells a device which code a copy needs) and a hash of `auth`, a
-  second value derived from the code that proves a device holds it. It refuses
-  a copy under any other code and after cloud backup was turned off, and a
-  browser told so forgets its code and asks for the current one.
-- A copy is sent when you turn it on, when you press **Back up now**, and
-  otherwise when the extension opens and what it holds — including records it
-  cannot read, such as another vault's — differs from the last copy that
-  browser sent. Typing the code on a new browser first merges the newest copy
-  into it (adding only what is missing), and sends a copy only if that browser
-  held accounts the copy lacked — the two lists together — so a new browser's
-  partial list never becomes the newest copy. Each time a
-  copy arrives the server keeps the 20 newest, the newest of each hour of the
-  last day, the newest of each day for 30 days, and the newest from each of
-  the 10 most recently active browsers, and deletes the rest.
-- **Sync between devices** (from 1.16.0). Each browser also reads the newest
-  copy of every other browser on the license — when the list opens, when you
-  come back to its window, and every few minutes while it stays open, never
-  more than once a minute — and folds in what changed
-  (`src/utils/cloud-merge.ts`): the newer edit of an account wins, a deletion
-  removes an account only if it was not edited after it, and an account
-  missing from another browser's copy is never removed for that. Deletions
-  travel inside the encrypted copy, as hashes of the deleted keys with their
-  time. To tell the browsers apart the server labels each copy in that list
-  with a tag (a hash of the license and the installation that sent it), and so
-  it sees when a browser with cloud backup on asks for the list — not what
-  any copy holds.
-- Restoring by hand only adds accounts that are missing, like the automatic copies. On
-  another computer: activate the license key, then enter the backup recovery
-  code. After Pro has ended: **Restore from cloud backup with your license
-  key** finds the copies with the key; the backup recovery code opens them.
-- If Pro ends, no new copies are made; the existing ones are deleted 90 days
-  after it ended, unless it is renewed — or bought again from a browser that
-  held the earlier license, whose backup (code and copies) the new license then
-  takes over. Turning cloud backup off needs the
-  code, deletes every copy of the license, and removes the code from this
-  browser and from Chrome sync; the other browsers stop on their next copy.
-  Lost the code: **start over with your license key** deletes the copies so a
-  new code can be made.
-
-## What is sent to our server
-
-Once a day — and, in a new install's first three days, within minutes of a
-step towards a first account (at most every five minutes, `src/billing/onboarding.ts`) —
-the extension sends `https://api.authenticator.sh/v1/sync` exactly
-these fields (`src/billing/sync.ts`, `buildSyncRequest`; a test holds it to the
-list):
-
-| Field | What it is |
-|---|---|
-| `iid` | A random id created by this installation. Not linked to your Google account, email or browser — unless you buy Pro: then the purchase record links the installation you bought from, and any installation where your license key is active, to the email you paid with |
-| `ver`, `ui_lang`, `browser_lang` | Extension version, interface language, browser language |
-| `installed_at`, `legacy`, `legacy_src` | When this installation appeared, and whether it predates billing |
-| `accounts` | **How many** accounts you have — a number, never which ones |
-| `groups` | **How many** groups those accounts are in — a number, never their names (from 1.15.2) |
-| `vault`, `sync`, `open_mode`, `view_mode`, `style`, `dark`, `os` | Whether password protection and sync are on, how the extension opens, how the account list is shown (`normal`, `compact`, `hidden`), which of its two styles it is drawn in, light or dark, and the operating system as Chrome names it (`win`, `mac`, `linux`, `cros`…) |
-| `pid`, `lid` | Which policy and license this installation currently holds |
-| `has_key`, `key_hint` | Whether this installation holds a license key, and the last four characters of it. The installation Pro was bought on is sent its key in the response (`key`) until those four characters match it — so a key bought later replaces an older one; one where a key was typed in already has it and is never sent one |
-| `opens` | How many times the extension was opened on each day since the last check-in (at most the last 14 days) — a count per day, nothing about what was looked at |
-| `events` | Up to 50 queued events from a closed list (`src/billing/events.ts`). Billing: the limit was reached, the paywall was shown or closed, a plan was chosen, a checkout or a key was tried, a banner or a notification behind the bell our server set was shown, clicked or closed (its id, action and place), the bell was opened (how many notifications it held and how many were new). The way to a first account: first open, whether the welcome page asked the extension to open and it did, the "add your first account" screen shown and the way picked on it, each add screen reached, each error shown or add left (as a kind — `error_no_qr`, `camera_denied` — never what was scanned or typed), accounts added and by which way, the first code copied or filled in. Never an account's name, issuer, secret or site |
-
-The server sees the request's country (from its edge, the IP address is not
-stored). If you buy Pro, Stripe gives us your email address, to send and
-restore your license key, and keeps the install id you bought from in the
-purchase's metadata. Retention and your rights are in the
-[privacy policy](https://www.authenticator.sh/privacy).
+The cleanup is local and does not contact upstream to delete anything already sent there. Historical files under `docs/release-notes/` describe upstream versions and may mention features removed from this fork.
 
 ## Where your data lives
 
 | Store | Contents | Default |
 |-------|----------|---------|
 | `chrome.storage.local` | Accounts (encrypted when password protection is on), settings, and — only while password protection is off — the per-site usage history | Always used; primary |
-| `chrome.storage.session` | The unlocked master key, the selected group filter and the per-site usage history; and an account the free limit stopped on the way to Checkout, until Pro turns on (sealed with the vault's key when password protection is on) — memory only, cleared when the browser closes | Only while unlocked; a stopped account for a day at most |
+| `chrome.storage.session` | The unlocked master key, the selected group filter and the per-site usage history — memory only, cleared when the browser closes | Only while unlocked |
 | `chrome.storage.sync` | A copy of the accounts and the vault metadata, replicated by Chrome **through the user's own Google account** | On, switchable off |
 | IndexedDB | Seven rolling snapshots, in the same form as the primary store | Always used |
-| `chrome.storage.local` (`billing*`) | The install id, the last signed policy and license, the license key this installation holds — typed in, or received after buying on it — and queued billing events and daily open counts — no account data | Always used |
-| `chrome.storage.sync` (`billingLegacy`, `billingLicenseKey`) | Whether this person predates billing, and the license key this installation holds — so their other Chrome profiles pick both up and turn Pro on by themselves | Only while sync is on; removed with the rest when sync is switched off, and put back when it is switched on again |
-| `chrome.storage.local` + `chrome.storage.sync` (`cloudBackupCode`) | The cloud backup's recovery code — encrypted under the vault's key when password protection is on | Only after turning cloud backup on; the sync copy only while sync is on, removed with the rest when sync is switched off |
-| Our server (`/v1/backup/*`) | Cloud backup copies, encrypted in the browser with a key we never receive; kept as described in [Cloud backup](#cloud-backup-pro-off-until-you-turn-it-on) | Only after turning cloud backup on (Pro) |
 
 Two consequences worth stating plainly:
 
@@ -605,7 +484,7 @@ Two consequences worth stating plainly:
   collected. Enabling password protection deletes it, and it can be switched off
   independently.
 
-We never receive your secrets, account names or codes in a form we can read: [cloud backup](#cloud-backup-pro-off-until-you-turn-it-on), if you turn it on, sends them encrypted with a code we never see. What our billing server does receive is listed in [What is sent to our server](#what-is-sent-to-our-server).
+This fork sends no authentication data or usage statistics to the upstream operator.
 
 ## Security
 

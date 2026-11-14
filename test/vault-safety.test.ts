@@ -6,7 +6,7 @@
 // was written beside. None of these lose a byte on the happy path, and each of
 // them ends with accounts nobody can open.
 
-import { areas, check, faults, flush, resetFaults, resetState, scenario, storageContext, throwsNamed, withLatency, USER_ADD } from './harness';
+import { areas, check, faults, flush, resetFaults, resetState, scenario, storageContext, throwsNamed, withLatency } from './harness';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -314,7 +314,7 @@ export async function run(): Promise<void> {
     const onWrite = (changes: any, area: string) => {
       const next = changes.authenticator_accounts?.newValue;
       if (area === 'local' && !adding && Array.isArray(next) && next.some(isCleartext)) {
-        adding = scanner.addAccount({ ...ACCOUNTS[0], id: 'n4', secret: 'NBSWY3DPEB3W64TM' }, USER_ADD).catch(e => e);
+        adding = scanner.addAccount({ ...ACCOUNTS[0], id: 'n4', secret: 'NBSWY3DPEB3W64TM' }).catch(e => e);
       }
     };
     chrome.storage.onChanged.addListener(onWrite);
@@ -347,7 +347,7 @@ export async function run(): Promise<void> {
     try {
       await Promise.all([
         prepared.commit(),
-        scanner.addAccount({ ...ACCOUNTS[0], id: 'n3', secret: 'MFRGGZDFMZTWQ2LK' }, USER_ADD).catch(e => e),
+        scanner.addAccount({ ...ACCOUNTS[0], id: 'n3', secret: 'MFRGGZDFMZTWQ2LK' }).catch(e => e),
       ]);
       await flush();
     } finally {

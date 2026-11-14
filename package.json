@@ -13,12 +13,10 @@
     "test": "tsx test/run.ts",
     "check:deps": "tsx scripts/check-deps.ts",
     "check:bundle": "tsx scripts/check-bundle.ts",
-    "build:e2e": "BILLING_ENV=test BILLING_API=http://127.0.0.1:3199 BILLING_RELEASE=2026-01-01 vite build --outDir .e2e-build --emptyOutDir && tsx scripts/check-bundle.ts .e2e-build",
+    "build:e2e": "vite build --outDir .e2e-build --emptyOutDir && tsx scripts/check-bundle.ts .e2e-build",
     "test:e2e": "npm run build:e2e && playwright test",
-    "test:stack": "playwright test --config playwright.stack.config.ts",
     "verify": "npm run typecheck && npm test && npm run check:deps",
-    "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "dev:billing": "BILLING_ENV=preview BILLING_API=http://localhost:3100 BILLING_RELEASE=2026-01-01 vite build --watch --mode development"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "jsqr": "^1.4.0",

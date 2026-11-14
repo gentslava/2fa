@@ -104,24 +104,8 @@ function copyFilesPlugin(): Plugin {
   };
 }
 
-// Which billing server this build talks to and which signing keys it trusts
-// (src/billing/config.ts, src/billing/keys.ts). A plain `vite build` is a
-// store build: production server, production key only. Development points at
-// a local or preview server with BILLING_ENV=preview BILLING_API=http://localhost:3100;
-// the e2e build uses BILLING_ENV=test and the key under test/fixtures.
-const BILLING_ENV = process.env.BILLING_ENV ?? 'production';
-if (!['production', 'preview', 'test'].includes(BILLING_ENV)) {
-  throw new Error(`BILLING_ENV must be production, preview or test (got ${BILLING_ENV})`);
-}
-
 export default defineConfig({
   plugins: [react(), copyFilesPlugin()],
-  define: {
-    __BILLING_ENV__: JSON.stringify(BILLING_ENV),
-    __BILLING_API__: JSON.stringify(process.env.BILLING_API ?? ''),
-    // Ignored by a store build (src/billing/config.ts); test builds move the release day.
-    __BILLING_RELEASE__: JSON.stringify(process.env.BILLING_RELEASE ?? ''),
-  },
   // Everything under public/ is placed deliberately by copyFilesPlugin —
   // manifest to the root, icons to icons/, translations to _locales/. Letting
   // Vite also mirror public/ verbatim shipped a second, unused 488 KB copy of

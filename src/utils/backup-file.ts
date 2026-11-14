@@ -29,9 +29,6 @@ interface EncryptedBackupFile {
   exportDate: string;
   /** The extension version that wrote the file; absent before 1.14.0. */
   appVersion?: string;
-  /** Written by an install that predates the paywall (BackupFileOptions). */
-  legacy?: true;
-  sourceLink?: string;
   /** Everything sensitive, including how many accounts there are. */
   data: string;
 }
@@ -66,46 +63,7 @@ export class WrongExportPasswordError extends Error {
   }
 }
 
-/**
- * `legacy` marks a file written by an install that predates the paywall, so
- * restoring it on a new computer keeps the person's unlimited accounts
- * (billing/legacy.ts). Absent otherwise — older readers ignore the field.
- */
-export interface BackupFileOptions {
-  legacy?: boolean;
-  /**
-   * The hash of the install writing the file (linkIdOf), so the Mac app importing
-   * it can say where it came from (desktop/src/link.ts). Never the install's id:
-   * the server takes that as proof of being the install (/v1/portal, /v1/license/deactivate).
-   */
-  sourceLink?: string;
-}
-
-/** What may stand for an install outside it: SHA-256 of its id, in hex. */
-export async function linkIdOf(installId: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(installId));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
-/** Told which install wrote a backup file just imported. Only the Mac app listens. */
-let backupSourceListener: ((sourceLink: unknown) => void) | null = null;
-export function onBackupSource(listener: (sourceLink: unknown) => void): void {
-  backupSourceListener = listener;
-}
-export function noteBackupSource(text: string): void {
-  if (!backupSourceListener) return;
-  try {
-    backupSourceListener((JSON.parse(text) as { sourceLink?: unknown }).sourceLink);
-  } catch {
-    // Another app's backup, not JSON: nothing to say.
-  }
-}
-
-/**
- * The version of the extension writing the file. Files from before 1.14.0 do
- * not have it, which is how a restore tells a pre-paywall backup from a new one
- * whatever date it bears (billing/legacy.ts).
- */
+/** The extension version that wrote the file, for compatibility diagnostics. */
 function appVersion(): { appVersion?: string } {
   try {
     const version = chrome.runtime.getManifest().version;
@@ -115,15 +73,13 @@ function appVersion(): { appVersion?: string } {
   }
 }
 
-export function buildPlainBackupFile(accounts: Account[], options: BackupFileOptions = {}): string {
+export function buildPlainBackupFile(accounts: Account[]): string {
   return JSON.stringify(
     {
       version: '2.0',
       exportDate: new Date().toISOString(),
       ...appVersion(),
       accountCount: accounts.length,
-      ...(options.legacy ? { legacy: true } : {}),
-      ...(options.sourceLink ? { sourceLink: options.sourceLink } : {}),
       accounts,
     },
     null,
@@ -133,8 +89,7 @@ export function buildPlainBackupFile(accounts: Account[], options: BackupFileOpt
 
 export async function buildEncryptedBackupFile(
   accounts: Account[],
-  password: string,
-  options: BackupFileOptions = {}
+  password: string
 ): Promise<string> {
   const salt = newSalt();
   const key = await deriveKeyFromPassword(password, salt);
@@ -147,8 +102,6 @@ export async function buildEncryptedBackupFile(
     salt: toBase64(salt),
     exportDate: new Date().toISOString(),
     ...appVersion(),
-    ...(options.legacy ? { legacy: true } : {}),
-    ...(options.sourceLink ? { sourceLink: options.sourceLink } : {}),
     data: await encryptJson(accounts, key),
   };
 

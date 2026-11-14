@@ -1,14 +1,8 @@
 // Cloud sync: how this device's list and the other devices' copies become one.
 //
-// Every device with cloud backup on sends its whole list, encrypted, to the
-// license's copies (billing/cloud-backup.ts). Sync is reading the newest copy
-// of each OTHER device and folding it in here. No server-side state, no
-// operation log: a copy is a device's complete answer to "what do you hold",
-// with two things that make it mergeable —
-//
-//   - each account's `updatedAt`, when it was last changed (types/index.ts);
-//   - `deleted`, the hashes of the seeds the device deleted since it started
-//     syncing, each with when (utils/tombstones.ts).
+// Pure merge rules over account snapshots. This module makes no network
+// requests. Local storage uses the same version stamps and field comparisons
+// when deciding whether an account has changed.
 //
 // Per seed, the newest of everything said about it wins: an edit newer than
 // this device's version replaces its fields; a deletion newer than every

@@ -13,7 +13,7 @@ import {
   SYNC_QUOTA_BYTES_PER_ITEM,
   syncAccountKeys,
   syncItemBytes,
-  throwsNamed, USER_ADD } from './harness';
+  throwsNamed } from './harness';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -63,7 +63,7 @@ export async function run(): Promise<void> {
   areas.local.authenticator_accounts = [...ACCOUNTS.map(a => ({ ...a })), ...respelled];
   check('the duplicates are folded for display', (await storage.getAccounts()).length === 3);
   let addError: unknown = null;
-  await storage.addAccount(extra as any, USER_ADD).catch(e => { addError = e; });
+  await storage.addAccount(extra as any).catch(e => { addError = e; });
   check('adding an account succeeds', addError === null, String(addError));
   check('the new account is there', (await storage.getAccounts()).some(a => a.id === 'a4'));
   check('writing fewer than the visible accounts is still refused',
@@ -72,13 +72,13 @@ export async function run(): Promise<void> {
   scenario('A new account goes to the top of the list; an import keeps its own order above the rest');
   await resetState();
   await storage.saveAccounts(ACCOUNTS.map(a => ({ ...a })));
-  await storage.addAccount({ ...extra } as any, USER_ADD);
+  await storage.addAccount({ ...extra } as any);
   check('the added account is first', (await storage.getAccounts()).map(a => a.id).join() === 'a4,a1,a2,a3');
   await storage.addMultipleAccounts([
     { ...extra, id: 'a5', secret: 'ONSWG4TFORZTA5DI' },
     { ...ACCOUNTS[0] },
     { ...extra, id: 'a6', secret: 'PJSXG33VOQQDCMBA' },
-  ] as any, USER_ADD);
+  ] as any);
   check('the imported ones are on top, in the order of the file, and nothing already here moved',
     (await storage.getAccounts()).map(a => a.id).join() === 'a5,a6,a4,a1,a2,a3',
     (await storage.getAccounts()).map(a => a.id).join());
@@ -90,11 +90,11 @@ export async function run(): Promise<void> {
   await storage.addMultipleAccounts([
     { ...extra, id: 'b1', secret: 'ONSWG4TFORZTA5DI', createdAt: now },
     { ...extra, id: 'b2', secret: 'PJSXG33VOQQDCMBA', createdAt: now + 1 },
-  ] as any, USER_ADD);
+  ] as any);
   await storage.addMultipleAccounts([
     { ...extra, id: 'b3', secret: 'MZXW6YTBOI======', createdAt: now + 2 },
     { ...extra, id: 'b4', secret: 'GEZDGNBVGY3TQOJQ', createdAt: now + 3 },
-  ] as any, USER_ADD, { continuesBatch: true });
+  ] as any, { continuesBatch: true });
   check('the second code goes below the first, above the older accounts',
     (await storage.getAccounts()).map(a => a.id).join() === 'b1,b2,b3,b4,a1,a2,a3',
     (await storage.getAccounts()).map(a => a.id).join());
@@ -104,7 +104,7 @@ export async function run(): Promise<void> {
   scenario('Replaying a held push keeps the accounts that arrived from sync');
   await resetStateFreshProfile();
   await storage.getAccounts();
-  await storage.addAccount({ ...extra, id: 'fresh' } as any, USER_ADD);
+  await storage.addAccount({ ...extra, id: 'fresh' } as any);
   await flush();
   const fromOldMachine = Array.from({ length: 30 }, (_, i) => ({
     ...ACCOUNTS[0], id: `o${i}`, name: 'x'.repeat(300), secret: 'JBSWY3DPEHPK3PX' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[i],
@@ -126,7 +126,7 @@ export async function run(): Promise<void> {
     { ...extra, id: 'a1' },                                         // new seed, taken id
     { ...extra, id: 'x2', secret: extra.secret.toLowerCase() },     // same seed again
   ];
-  const imported = await storage.importAccounts(JSON.stringify(importFile), USER_ADD);
+  const imported = await storage.importAccounts(JSON.stringify(importFile));
   const afterImport = await storage.getAccounts();
   check('one account is reported added', imported.added === 1, String(imported.added));
   check('one record is written', (areas.local.authenticator_accounts as any[]).length === 4,
@@ -135,9 +135,9 @@ export async function run(): Promise<void> {
   check('the original a1 is untouched', afterImport.find(a => a.id === 'a1')?.secret === ACCOUNTS[0].secret);
 
   scenario('Adding a seed that is already here says so');
-  check('a new seed reports added', await storage.addAccount({ ...extra, id: 'y1', secret: 'KRUGS4ZANFZSAYJA' } as any, USER_ADD));
+  check('a new seed reports added', await storage.addAccount({ ...extra, id: 'y1', secret: 'KRUGS4ZANFZSAYJA' } as any));
   check('the same seed again reports not added',
-    !(await storage.addAccount({ ...extra, id: 'y2', secret: 'kruGS4ZA NFZSAYJA' } as any, USER_ADD)));
+    !(await storage.addAccount({ ...extra, id: 'y2', secret: 'kruGS4ZA NFZSAYJA' } as any)));
 
   // A drag in the popup used to delete anything the stale React state had not
   // mentioned — e.g. an account the scanner tab had just added.
@@ -296,7 +296,7 @@ export async function run(): Promise<void> {
   await storage.addAccount({
     id: 'late', name: 'added-during-setup', issuer: 'Scanner',
     secret: 'NBSWY3DPEHPK3PXQ', algorithm: 'SHA1', digits: 6, period: 30, createdAt: 99,
-  } as any, USER_ADD);
+  } as any);
   await pending.commit();
   await flush();
   const afterLate = await storage.getAccounts();
@@ -390,7 +390,7 @@ export async function run(): Promise<void> {
     const here = (await storage.getAccounts()).map(a => a.id).join();
     check('its accounts are not pulled onto this device', here === 'a1', here);
     await storage.updateAccount('a1', { name: 'renamed' });
-    await storage.addAccount({ ...ACCOUNTS[0], id: 'a4', secret: 'NBSWY3DPEB3W64TM' }, USER_ADD);
+    await storage.addAccount({ ...ACCOUNTS[0], id: 'a4', secret: 'NBSWY3DPEB3W64TM' });
     await flush();
     check('and a save here does not delete them from sync', syncAccountKeys().length === 1 && (areas.sync.authenticator_accounts_0 as any[]).length === 2);
   }
@@ -432,7 +432,7 @@ export async function run(): Promise<void> {
     // Held, but not an account under some other password — the banner that
     // says so sent people with protection off looking for one.
     check('and not counted as locked away', storage.lockedAwayCount() === 0, String(storage.lockedAwayCount()));
-    const added = await storage.addAccount({ ...ACCOUNTS[0], id: 'a4', secret: 'NBSWY3DPEB3W64TM' }, USER_ADD).catch(error => error);
+    const added = await storage.addAccount({ ...ACCOUNTS[0], id: 'a4', secret: 'NBSWY3DPEB3W64TM' }).catch(error => error);
     check('an account can still be added', added === true, String(added));
     const kept = areas.local.authenticator_accounts as any[];
     check('a save keeps what it could not read', kept.includes(null) && kept.includes('garbage'), JSON.stringify(kept.slice(-5)));
@@ -598,7 +598,7 @@ export async function run(): Promise<void> {
       const ids = (await storage.getAccounts()).map(a => a.id).join();
       check('the cleartext copy is kept out', ids === 'a2', ids);
     }
-    await storage.addAccount(ACCOUNTS[0], USER_ADD);
+    await storage.addAccount(ACCOUNTS[0]);
     {
       const ids = (await storage.getAccounts()).map(a => a.id).sort().join();
       check('and adding it back here still works', ids === 'a1,a2', ids);
@@ -682,7 +682,7 @@ export async function run(): Promise<void> {
     check('and they stay deleted', ids === kept, ids);
   }
   scenario('Undo puts all of them back');
-  await storage.addMultipleAccounts(before.filter(a => a.id === 'a1' || a.id === 'a3'), { kind: 'undo' });
+  await storage.addMultipleAccounts(before.filter(a => a.id === 'a1' || a.id === 'a3'));
   await flush();
   {
     const ids = (await storage.getAccounts()).map(a => a.id).sort().join();

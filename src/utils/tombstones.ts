@@ -13,11 +13,8 @@
 // — over quota, rate-limited — because for them the stale copy never goes away
 // and deleting never works at all.
 //
-// So a deletion leaves a marker, and the merge honours it. Chrome sync never
-// carries the marker: another Chrome profile keeps its copy. Cloud sync does —
-// for a device that has cloud backup on, the markers made since it started
-// syncing travel in its copy, and the other devices delete what they hold of
-// that seed unless they changed it after the deletion (billing/cloud-merge.ts).
+// So a deletion leaves a local marker, and reads honour it. Chrome sync does
+// not carry the marker: another Chrome profile keeps its own copy.
 
 import { ageOf, stampNow } from './clock';
 import { toBase64 } from './crypto';
@@ -111,9 +108,7 @@ export async function markDeleted(identities: string[], at?: number): Promise<vo
 }
 
 /**
- * Every marker, as hash -> when: what cloud sync carries to the other devices
- * (billing/cloud-backup.ts). Hashes only — the same values the merge compares —
- * and inside the end-to-end encrypted copy.
+ * Every local deletion marker, as hash -> when, for snapshot comparisons.
  */
 export async function readDeletionMarks(): Promise<Record<string, number>> {
   return { ...(await read()) };

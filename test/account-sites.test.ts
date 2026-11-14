@@ -130,7 +130,7 @@ export async function run(): Promise<void> {
     const file = buildPlainBackupFile([{ ...GITHUB, sites: ['github.com'] }]);
     check('the backup file carries them', file.includes('"github.com"'));
     await resetState();
-    await storage.importAccounts(file, { kind: 'import' });
+    await storage.importAccounts(file);
     check('and reading it back restores them', JSON.stringify((await storage.getAccounts())[0]?.sites) === '["github.com"]', JSON.stringify(await storage.getAccounts()));
   }
 

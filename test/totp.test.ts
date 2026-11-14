@@ -5,7 +5,7 @@
 // popup down. They are pure functions, so the scenarios below are the cheapest
 // coverage in the project.
 
-import { check, scenario, USER_ADD } from './harness';
+import { check, scenario } from './harness';
 
 const base = {
   id: 'x',
@@ -446,7 +446,7 @@ export async function run(): Promise<void> {
     qr.buildOTPAuthURL({ ...base, issuer: 'Other', name: 'two@x.com', secret: secondSecret }),
   ].join('\n');
 
-  const first = await uriImport.importURIList(twoLinks, 'en', USER_ADD);
+  const first = await uriImport.importURIList(twoLinks, 'en');
   check('the first import reports what it wrote', first.added === 2, JSON.stringify(first));
   check('and says so as a success', first.kind === 'success', first.kind);
 
@@ -455,11 +455,11 @@ export async function run(): Promise<void> {
 
   // Same text again: the de-duplication is what stops a second attempt at a
   // half-finished migration from doubling everything.
-  const second = await uriImport.importURIList(twoLinks, 'en', USER_ADD);
+  const second = await uriImport.importURIList(twoLinks, 'en');
   check('a repeat adds nothing', second.added === 0, JSON.stringify(second));
   check('and still leaves two accounts', (await storage.getAccounts()).length === 2);
 
-  const nothing = await uriImport.importURIList('not a link at all', 'en', USER_ADD);
+  const nothing = await uriImport.importURIList('not a link at all', 'en');
   check('a file with no links is an error, not a silent no-op',
     nothing.kind === 'error' && nothing.added === undefined, JSON.stringify(nothing));
 
@@ -470,7 +470,7 @@ export async function run(): Promise<void> {
     { ...base, id: 'a', name: 'x@y.com', issuer: 'Acme', secret },
     { ...base, id: 'b', name: 'z@y.com', issuer: 'Acme', secret: 'KRSXG5CTMVRXEZLU' },
   ] as any);
-  const restored = await uriImport.importURIList(written.text, 'en', USER_ADD);
+  const restored = await uriImport.importURIList(written.text, 'en');
   check('an exported .txt imports as its own accounts', restored.added === 2, JSON.stringify(restored));
   check('and the file was recognised as a link list', uriImport.looksLikeURIList(written.text));
 

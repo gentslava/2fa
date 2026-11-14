@@ -1,4 +1,4 @@
-import { areas, check, resetState, scenario } from './harness';
+import { check, resetState, scenario } from './harness';
 
 const acc = (id: string, issuer: string, extra: Record<string, unknown> = {}): any => ({
   id, name: 'alice', issuer, secret: 'JBSWY3DPEHPK3PXP', algorithm: 'SHA1', digits: 6, period: 30, createdAt: 1, ...extra,
@@ -130,22 +130,6 @@ export async function run(): Promise<void> {
   await s.recordAccountUsage('github.com', 'gh', 'site');
   check('used on github.com: github.co asks', (await s.getFillCandidate('github.co', [GITHUB])) === null);
   check('github.com still fills', (await s.getFillCandidate('github.com', [GITHUB]))?.accountId === 'gh');
-
-  scenario('The daily count says nothing but counts');
-  await resetState();
-  await c.countCodeUse('copy', 'github.com', GITHUB, false);
-  await s.recordAccountUsage('github.com', 'gh', 'site');
-  await c.countCodeUse('fill', 'github.com', GITHUB, false);
-  await c.countCodeUse('copy', 'vercel.com', GITHUB, false);
-  const day = areas.local.codeSitesDaily;
-  check('counted by kind', day?.copy === 2 && day?.fill === 1, JSON.stringify(day));
-  check('and by where', day?.unknown === 1 && day?.here === 1 && day?.elsewhere === 1, JSON.stringify(day));
-  areas.local.codeSitesDaily = { ...day, day: '2000-01-01' };
-  await c.countCodeUse('copy', 'github.com', GITHUB, false);
-  const queued = (areas.local.billingEvents ?? []) as any[];
-  const sent = queued.find(e => e.n === 'code_sites');
-  check('the turned day is sent as one event', !!sent && sent.p.copy === 2 && !('day' in sent.p), JSON.stringify(sent));
-  check('without a site in it', !JSON.stringify(sent ?? {}).includes('github'));
 
   scenario('Punycode is read as the letters it stands for');
   check('xn--gthub-n2e.com decodes', l.decodeHost('xn--gthub-n2e.com') === 'gіthub.com', l.decodeHost('xn--gthub-n2e.com'));

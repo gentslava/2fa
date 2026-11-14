@@ -11,7 +11,7 @@
 // The length guard in saveAccounts does not see it: eleven written over eleven
 // is not a shrink. These scenarios are the ones that guard actually misses.
 
-import { areas, check, flush, resetState, scenario, setWebLocks, storageContext, withLatency, USER_ADD } from './harness';
+import { areas, check, flush, resetState, scenario, setWebLocks, storageContext, withLatency } from './harness';
 
 const account = (id: string, secret: string) => ({
   id,
@@ -46,8 +46,8 @@ export async function run(): Promise<void> {
   await storage.saveAccounts([account('a1', SEEDS[0])]);
   await flush();
   await Promise.all([
-    storage.addAccount(account('b2', SEEDS[1]) as any, USER_ADD),
-    storage.addAccount(account('c3', SEEDS[2]) as any, USER_ADD),
+    storage.addAccount(account('b2', SEEDS[1]) as any),
+    storage.addAccount(account('c3', SEEDS[2]) as any),
   ]);
   await flush();
   check(
@@ -64,8 +64,8 @@ export async function run(): Promise<void> {
   await storage.saveAccounts([account('a1', SEEDS[0])]);
   await flush();
   const [batch] = await Promise.all([
-    storage.addMultipleAccounts([account('b2', SEEDS[1]), account('c3', SEEDS[2])] as any, USER_ADD),
-    storage.addAccount(account('d4', SEEDS[3]) as any, USER_ADD),
+    storage.addMultipleAccounts([account('b2', SEEDS[1]), account('c3', SEEDS[2])] as any),
+    storage.addAccount(account('d4', SEEDS[3]) as any),
   ]);
   await flush();
   check(
@@ -83,7 +83,7 @@ export async function run(): Promise<void> {
   await flush();
   await Promise.all([
     storage.deleteAccount('a1'),
-    storage.addAccount(account('b3', SEEDS[2]) as any, USER_ADD),
+    storage.addAccount(account('b3', SEEDS[2]) as any),
   ]);
   await flush();
   check(
@@ -100,7 +100,7 @@ export async function run(): Promise<void> {
   await flush();
   const outcomes = await Promise.allSettled([
     storage.updateAccount('a1', { name: 'renamed@example.com' }),
-    storage.addAccount(account('b2', SEEDS[1]) as any, USER_ADD),
+    storage.addAccount(account('b2', SEEDS[1]) as any),
   ]);
   await flush();
   check(
@@ -120,7 +120,7 @@ export async function run(): Promise<void> {
   await flush();
   await Promise.all([
     storage.reorderAccounts(['a2', 'a1']),
-    storage.addAccount(account('b3', SEEDS[2]) as any, USER_ADD),
+    storage.addAccount(account('b3', SEEDS[2]) as any),
   ]);
   await flush();
   check(
@@ -136,7 +136,7 @@ export async function run(): Promise<void> {
   await storage.saveAccounts([account('a0', SEEDS[0])]);
   await flush();
   await Promise.all(
-    SEEDS.slice(1).map((seed, i) => storage.addAccount(account(`w${i + 1}`, seed) as any, USER_ADD))
+    SEEDS.slice(1).map((seed, i) => storage.addAccount(account(`w${i + 1}`, seed) as any))
   );
   await flush();
   const all = await storage.getAccounts();
@@ -155,7 +155,7 @@ export async function run(): Promise<void> {
   await resetState();
   await storage.saveAccounts([account('a1', SEEDS[0])]);
   await flush();
-  await storage.addAccount({ ...account('b2', SEEDS[0]), name: 'a different name' } as any, USER_ADD);
+  await storage.addAccount({ ...account('b2', SEEDS[0]), name: 'a different name' } as any);
   await flush();
   check('nothing was appended', storedRecords().length === 1, String(storedRecords().length));
   check(
@@ -172,8 +172,7 @@ export async function run(): Promise<void> {
   await flush();
   const spellings = ['jbswy3dpehpk3pxp', 'JBSWY3DPEHPK3PXP=', 'JBSW-Y3DP-EHPK-3PXP', 'JBSW Y3DP EHPK 3PXP'];
   const batch2 = await storage.addMultipleAccounts(
-    spellings.map((secret, i) => account(`v${i}`, secret)) as any
-  , USER_ADD);
+    spellings.map((secret, i) => account(`v${i}`, secret)) as any);
   await flush();
   check('none of them is added', batch2.added === 0, String(batch2.added));
   check('all four are reported as already here', batch2.skipped === 4, String(batch2.skipped));
@@ -187,13 +186,13 @@ export async function run(): Promise<void> {
   await flush();
   const { faults, resetFaults } = await import('./harness');
   faults.failLocalSetFor = 'authenticator_accounts';
-  const refused = await storage.addAccount(account('b2', SEEDS[1]) as any, USER_ADD).then(
+  const refused = await storage.addAccount(account('b2', SEEDS[1]) as any).then(
     () => 'resolved',
     () => 'rejected'
   );
   resetFaults();
   check('the failing write is reported to its caller', refused === 'rejected', refused);
-  await storage.addAccount(account('c3', SEEDS[2]) as any, USER_ADD);
+  await storage.addAccount(account('c3', SEEDS[2]) as any);
   await flush();
   check(
     'and the next write still goes through',
@@ -263,7 +262,7 @@ export async function run(): Promise<void> {
 
         const first = {
           delete: () => popup.deleteAccount('a1'),
-          add: () => popup.addAccount(account('x3', SEEDS[2]) as any, USER_ADD),
+          add: () => popup.addAccount(account('x3', SEEDS[2]) as any),
           edit: () => popup.updateAccount('a2', { name: 'renamed' }),
           reorder: () => popup.reorderAccounts(['a2', 'a1']),
         }[kind];
@@ -273,7 +272,7 @@ export async function run(): Promise<void> {
         await Promise.all([
           first(),
           new Promise(resolve => setTimeout(resolve, offset)).then(() =>
-            scanner.addAccount(account('y4', SEEDS[3]) as any, USER_ADD)
+            scanner.addAccount(account('y4', SEEDS[3]) as any)
           ),
         ]);
         await new Promise(resolve => setTimeout(resolve, 40));
@@ -427,7 +426,7 @@ export async function run(): Promise<void> {
   try {
     await resetState();
     await storage.saveAccounts([account('a1', SEEDS[0])]);
-    await Promise.all(SEEDS.slice(1, 4).map((seed, i) => storage.addAccount(account(`n${i}`, seed) as any, USER_ADD)));
+    await Promise.all(SEEDS.slice(1, 4).map((seed, i) => storage.addAccount(account(`n${i}`, seed) as any)));
     await flush();
     check('every add landed', storedIds().join() === 'a1,n0,n1,n2', storedIds().join());
   } finally {

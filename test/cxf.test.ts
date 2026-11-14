@@ -7,7 +7,7 @@
 // next to a password inside one login item (the 2FA half vanishes and nobody
 // notices until a login is needed).
 
-import { check, flush, resetState, scenario, USER_ADD } from './harness';
+import { check, flush, resetState, scenario } from './harness';
 
 const ACCOUNTS: any[] = [
   { id: 'a1', name: 'alice@example.com', issuer: 'GitHub', secret: 'JBSWY3DPEHPK3PXP', algorithm: 'SHA1', digits: 6, period: 30, createdAt: 1700000000000 },
@@ -237,7 +237,7 @@ export async function run(): Promise<void> {
 
   scenario('A CXF file imports through the normal import path');
   await resetState();
-  const result = await storage.importAccountList(cxf.readCxfFile(text), USER_ADD);
+  const result = await storage.importAccountList(cxf.readCxfFile(text));
   await flush();
   check('all three are written', result.added === 3, `added ${result.added}`);
   const stored = await storage.getAccounts();
@@ -245,7 +245,7 @@ export async function run(): Promise<void> {
   check('with their algorithms intact', stored.some((a) => a.algorithm === 'SHA512'));
 
   scenario('Importing the same CXF file twice adds nothing the second time');
-  const again = await storage.importAccountList(cxf.readCxfFile(text), USER_ADD);
+  const again = await storage.importAccountList(cxf.readCxfFile(text));
   await flush();
   check('nothing is duplicated', again.added === 0, `added ${again.added}`);
   check('the list is unchanged', (await storage.getAccounts()).length === 3);

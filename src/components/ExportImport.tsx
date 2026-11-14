@@ -1,4 +1,3 @@
-import { readInstall } from '@/billing/state';
 import { useId, useRef, useState } from 'react';
 import { useEscapeLayer } from '@/hooks/useLayer';
 import { ClipboardPaste, Download, Link2, Lock, QrCode, Share2, Unlock, Upload } from 'lucide-react';
@@ -11,8 +10,6 @@ import {
   quarantinedCount,
 } from '@/utils/storage';
 import { ImportRejectedError, isEncryptedMaFile, readImportFile, type ImportFile, type ImportReport } from '@/utils/import-formats';
-import { addWithLimit } from '@/billing/add';
-import { adoptLegacyFromBackup, backupPredatesBilling, installPredatesBilling } from '@/billing/legacy';
 import { markBackupDone } from '@/utils/backup-reminder';
 import { parseQRCode, generateRandomColor, qrFailureKey, UnsupportedOTPTypeError } from '@/utils/qr-parser';
 import { saveErrorMessage } from '@/utils/save-error';
@@ -24,18 +21,15 @@ import {
   describeFileImport,
   describeImport,
   fileImportKind,
-  importErrorKind, importErrorMessage,
+  importErrorMessage,
 } from '@/utils/import-message';
 import { TransferExport } from '@/components/TransferExport';
-import { reportAddFail, reportAddStep } from '@/billing/onboarding';
 import { importURIList, looksLikeURIList } from '@/utils/uri-import';
 import { confirmDialog, promptDialog, toast } from '@/utils/ui-feedback';
 import {
   backupFileName,
   buildEncryptedBackupFile,
   buildPlainBackupFile,
-  linkIdOf,
-  noteBackupSource,
   buildURIBackupFile,
   uriBackupFileName,
   downloadBackupFile,
@@ -68,13 +62,6 @@ interface ExportImportProps {
  * ImportRejectedError for a file that cannot be imported at all; say it with
  * importErrorMessage.
  */
-/** For the file: which extension install wrote it. Not in the Mac app's own exports. */
-async function sourceLinkOfThisInstall(): Promise<string | undefined> {
-  if ('__TAURI_INTERNALS__' in globalThis) return undefined;
-  const install = await readInstall();
-  return install ? linkIdOf(install.id) : undefined;
-}
-
 export async function importBackupText(
   text: string,
   /** `app`: another app's backup, whose own password this is (FreeOTP, Aegis, 2FAS). */
@@ -86,12 +73,7 @@ export async function importBackupText(
 ): Promise<(ImportReport & { leftOut: number }) | null> {
   const read = await readBackupText(text, promptForPassword, fileName, file);
   if (!read) return null;
-  // Read (and decrypted) once, written through the limit: choosing "add the
-  // ones that fit" in the paywall runs the write again, not the password prompt.
-  if (read.predatesBilling) await adoptLegacyFromBackup();
-  const imported = await addWithLimit('file', origin => importAccountList(read.entries, origin, read.from));
-  if (imported) noteBackupSource(text);
-  return imported;
+  return importAccountList(read.entries, read.from);
 }
 
 /**
@@ -103,7 +85,7 @@ async function readBackupText(
   promptForPassword: (app?: string) => Promise<string | null> | string | null,
   fileName?: string,
   file?: Blob
-): Promise<{ entries: unknown[]; from: Partial<Omit<ImportFile, 'entries'>>; predatesBilling: boolean } | null> {
+): Promise<{ entries: unknown[]; from: Partial<Omit<ImportFile, 'entries'>> } | null> {
   // From the bytes: as text, the stream's first bytes are already replacement
   // characters, and the strings in it are Java's own spelling of UTF-8.
   const bytes = file ? new Uint8Array(await file.arrayBuffer()) : null;
@@ -111,10 +93,10 @@ async function readBackupText(
     const password = await promptForPassword('FreeOTP');
     if (!password) return null;
     const read = await readFreeOtpBackup(bytes, password);
-    return { entries: read.entries, from: read, predatesBilling: false };
+    return { entries: read.entries, from: read };
   }
   const preferences = readFreeOtpPreferences(text);
-  if (preferences) return { entries: preferences.entries, from: preferences, predatesBilling: false };
+  if (preferences) return { entries: preferences.entries, from: preferences };
 
   // Checked first: it is not JSON, so every reader below would call it an
   // unknown format, and the way out is a step in SDA, not in this app.
@@ -128,7 +110,7 @@ async function readBackupText(
     // With its count of unusable secrets: dropped silently, a file holding
     // nothing but those came back as an empty list and "Import successful!".
     const { accounts, unreadable, unsupported } = readCxf(text);
-    return { entries: accounts, from: { unreadable, unsupported }, predatesBilling: false };
+    return { entries: accounts, from: { unreadable, unsupported } };
   }
 
   if (!isEncryptedBackupFile(text)) {
@@ -154,21 +136,14 @@ async function readBackupText(
       if (error instanceof ImportRejectedError) throw error;
       throw new ImportRejectedError('unknown-format');
     }
-    return { entries: file.entries, from: file, predatesBilling: backupPredatesBilling(parsed) };
+    return { entries: file.entries, from: file };
   }
 
   const password = await promptForPassword();
   if (!password) return null;
-  let envelope: unknown = null;
-  try {
-    envelope = JSON.parse(text);
-  } catch {
-    // isEncryptedBackupFile already vouched for it; the date is only a hint.
-  }
   return {
     entries: await readEncryptedBackupFile(text, password),
     from: {},
-    predatesBilling: backupPredatesBilling(envelope),
   };
 }
 
@@ -293,15 +268,14 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
         if (!proceed) return;
       }
 
-      const fileOptions = { legacy: await installPredatesBilling(), sourceLink: await sourceLinkOfThisInstall() };
       const contents =
         format === 'encrypted'
-          ? await buildEncryptedBackupFile(accounts, exportPassword, fileOptions)
+          ? await buildEncryptedBackupFile(accounts, exportPassword)
           : format === 'cxf'
             ? buildCxfFile(accounts)
             : uri
               ? uri.text
-              : buildPlainBackupFile(accounts, fileOptions);
+              : buildPlainBackupFile(accounts);
 
       downloadBackupFile(
         contents,
@@ -420,9 +394,7 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
   // Thin: the work lives in uri-import so the other file input gets the same
   // behaviour instead of a second copy that drifts.
   const runURIImport = async (text: string): Promise<void> => {
-    const outcome = await addWithLimit('uri', origin => importURIList(text, language, origin));
-    // The limit stopped it and the person closed the paywall: nothing to report.
-    if (!outcome) return;
+    const outcome = await importURIList(text, language);
     if (outcome.added !== undefined) {
       // The count after the import, as the popup's own file input records it:
       // with 0 here, thirty days later every account read as added since the
@@ -446,7 +418,6 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
       cancelLabel: t('common.cancel'),
     });
     if (!text || !text.trim()) return;
-    void reportAddStep('settings_paste', 'submitted');
     await runURIImport(text);
   };
 
@@ -480,7 +451,6 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
       }
     } catch (error) {
       console.error('Import failed:', error);
-      void reportAddFail('settings_import', importErrorKind(error));
       toast('error', importErrorMessage(error, language));
     }
 
@@ -524,10 +494,7 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
         // Add all accounts at once
         let importResult;
         try {
-          const added = await addWithLimit(parsed.type === 'migration' ? 'migration' : 'qr', origin =>
-            addMultipleAccounts(accountsToAdd, origin)
-          );
-          if (!added) return;
+          const added = await addMultipleAccounts(accountsToAdd);
           importResult = { ...added, unsupported: parsed.skipped ?? 0 };
         } catch (error) {
           console.error('Could not save the scanned accounts:', error);
@@ -546,7 +513,6 @@ export function ExportImport({ onImportComplete, onExportComplete, language }: E
       }
     } catch (error) {
       console.error('QR import failed:', error);
-      void reportAddFail('settings_import', 'qr_failed');
       toast('error', qrImportErrorMessage(error, language));
     }
   };

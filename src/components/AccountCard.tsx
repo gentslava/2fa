@@ -13,7 +13,6 @@ import { finishPickedFill } from '@/utils/finish-quick-fill';
 import { announceFilled } from '@/hooks/useFinishQuickFill';
 import { ProgressRing } from './ProgressRing';
 import { TruncatedName } from './TruncatedName';
-import { reportCodeUsed } from '@/billing/onboarding';
 
 export type ViewMode = 'normal' | 'compact' | 'hidden';
 
@@ -199,7 +198,6 @@ export const AccountCard = memo(function AccountCard({
       toast('error', t('accounts.copyFailed'));
       return;
     }
-    void reportCodeUsed('copy');
     setCopied(true);
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => {

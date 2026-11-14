@@ -30,9 +30,6 @@ import {
   type ImportReport,
 } from './import-formats';
 import { withAccountsLock } from './write-lock';
-import { admit, type AddOrigin } from '@/billing/gate';
-import { reassertSyncedFacts } from '@/billing/state';
-import { openCodeFromVault, sealCodeUnderVault } from '@/billing/cloud-backup-code';
 
 const STORAGE_KEY = 'authenticator_accounts';
 const SYNC_OVERFLOW_KEY = 'syncOverflow';
@@ -84,8 +81,6 @@ export async function setSyncEnabled(enabled: boolean): Promise<void> {
       const meta = await getVaultMeta();
       if (meta) await saveVaultMeta(meta);
     });
-    // And the two billing facts turning sync off took with it.
-    await reassertSyncedFacts();
     return;
   }
 
@@ -102,11 +97,8 @@ export async function setSyncEnabled(enabled: boolean): Promise<void> {
   // purge repeating on every later save here, as it used to: each time a
   // sync-on machine pushed, the next rename on this one wiped it again, so the
   // other machines effectively had no cloud copy at all.
-  // The billing facts that ride along in sync (billing/state.ts) go too —
-  // the cloud backup code among them: "removed from Google's servers" is about
-  // everything we put there.
   await chrome.storage.sync
-    .remove([...(await syncKeysInUse()), VAULT_META_KEY, 'billingLegacy', 'billingLicenseKey', 'cloudBackupCode'])
+    .remove([...(await syncKeysInUse()), VAULT_META_KEY])
     .catch(() => {});
 }
 
@@ -1082,22 +1074,6 @@ export async function getAccounts(): Promise<Account[]> {
   return decodeAccounts(await getStoredAccounts());
 }
 
-/**
- * How many accounts this device holds, and in how many groups, from local
- * storage alone. For the
- * billing check-in: a full read merges sync and starts the sync download
- * window, and the service worker checks in at install time — before a new
- * computer has received its synced accounts. Started there, the window had
- * run out by the time they arrived, and the first account added by hand could
- * then overwrite the only cloud copy. Throws like getAccounts (locked vault).
- */
-export async function countLocalAccounts(): Promise<{ accounts: number; groups: number }> {
-  const accounts = await decodeAccounts(await readLocalRecords());
-  // Distinct names as the popup's filter shows them (trimmed, blank = ungrouped).
-  const groups = new Set(accounts.map(account => account.group?.trim()).filter(Boolean));
-  return { accounts: accounts.length, groups: groups.size };
-}
-
 export interface SaveOptions {
   /** Set by callers that legitimately remove accounts. */
   allowShrink?: boolean;
@@ -1380,13 +1356,8 @@ async function mutateAccounts<T>(
 
 /**
  * False when the seed was already here, so nothing was written.
- *
- * `origin` is required: an account added by the person counts against the
- * free limit (billing/gate.ts), an undone delete does not. The check runs here,
- * inside the lock that every window shares, so two windows cannot both take
- * the last free slot. It throws AccountLimitError before anything is written.
  */
-export async function addAccount(account: Account, origin: AddOrigin): Promise<boolean> {
+export async function addAccount(account: Account): Promise<boolean> {
   return mutateAccounts(accounts => {
     // Deduplicated like every other way in, which this one was not.
     //
@@ -1409,7 +1380,6 @@ export async function addAccount(account: Account, origin: AddOrigin): Promise<b
       next[at] = asSteam(accounts[at], account);
       return { accounts: next, result: true };
     }
-    admit(origin, accounts.length, 1);
     // At the top: the account just added is the one the person is about to
     // type a code from, and at the bottom of a long list it was out of sight.
     return { accounts: [account, ...accounts], result: true };
@@ -1418,15 +1388,13 @@ export async function addAccount(account: Account, origin: AddOrigin): Promise<b
 
 export async function addMultipleAccounts(
   newAccounts: Account[],
-  origin: AddOrigin,
   options: { continuesBatch?: boolean } = {}
 ): Promise<{ added: number; skipped: number; total: number; updated: number; leftOut: number }> {
   return mutateAccounts((accounts, stored) => {
     const merged = mergeIncoming(newAccounts, accounts, stored, 'added');
-    const limited = withinLimit(merged, accounts.length, origin);
     const admitted = options.continuesBatch
-      ? { ...limited, accounts: belowRecent(limited.accounts, limited.added, accounts) }
-      : limited;
+      ? { ...merged, accounts: belowRecent(merged.accounts, merged.added, accounts) }
+      : merged;
     const result = {
       added: admitted.added,
       skipped: newAccounts.length - merged.added - merged.updated,
@@ -1460,19 +1428,6 @@ function belowRecent(merged: Account[], added: number, before: Account[]): Accou
   const fresh = merged.slice(0, added);
   const rest = merged.slice(added);
   return [...rest.slice(0, at), ...fresh, ...rest.slice(at)];
-}
-
-/**
- * The merged list cut to what the limit admits. New accounts are the head of
- * the merged list (mergeIncoming puts them first, in order), so keeping the
- * first `n` of them is keeping the first `n` the person brought — the order of
- * the file, or of the export QR. Upgrades of accounts already here are not new
- * accounts and always stay.
- */
-function withinLimit(merged: Merged, count: number, origin: AddOrigin): { accounts: Account[]; added: number } {
-  const keep = admit(origin, count, merged.added, merged.updated);
-  if (keep >= merged.added) return { accounts: merged.accounts, added: merged.added };
-  return { accounts: [...merged.accounts.slice(0, keep), ...merged.accounts.slice(merged.added)], added: keep };
 }
 
 export async function reorderAccounts(accountIds: string[]): Promise<void> {
@@ -1668,7 +1623,7 @@ export async function restoreGroupPlacements(placements: readonly GroupPlacement
  * vault on, a list of group names in chrome.storage would put "Crypto" and
  * "Work — Acme" on disk in the clear — the metadata the vault exists to hide,
  * see active-group.ts. Inside the account records the order is encrypted with
- * everything else, and travels in exports and cloud backups for free.
+ * everything else, and travels in exports.
  */
 export async function reorderGroups(names: readonly string[]): Promise<void> {
   const rank = new Map(names.map((name, index) => [name, index]));
@@ -1757,7 +1712,7 @@ export async function exportAccounts(): Promise<string> {
   return JSON.stringify(accounts, null, 2);
 }
 
-export async function importAccounts(jsonData: string, origin: AddOrigin): Promise<ImportReport & { leftOut: number }> {
+export async function importAccounts(jsonData: string): Promise<ImportReport & { leftOut: number }> {
   let file: ImportFile;
   try {
     // Our own plain export, a bare array from before 1.2, or another
@@ -1773,7 +1728,7 @@ export async function importAccounts(jsonData: string, origin: AddOrigin): Promi
     throw new ImportRejectedError('unknown-format');
   }
 
-  return await importAccountList(file.entries, origin, file);
+  return await importAccountList(file.entries, file);
 }
 
 export interface ImportResult {
@@ -1805,7 +1760,6 @@ function normalizeImported(entry: unknown, index: number): Account | null {
  */
 export async function importAccountList(
   importedAccounts: unknown[],
-  origin: AddOrigin,
   from: Partial<Omit<ImportFile, 'entries'>> = {}
 ): Promise<ImportReport & { updated: number; leftOut: number }> {
   if (!Array.isArray(importedAccounts)) {
@@ -1829,7 +1783,7 @@ export async function importAccountList(
   // mergeIncoming.
   return mutateAccounts((existingAccounts, stored) => {
     const merged = mergeIncoming(usable, existingAccounts, stored, 'imported');
-    const admitted = withinLimit(merged, existingAccounts.length, origin);
+    const admitted = merged;
     const result = {
       added: admitted.added,
       updated: merged.updated,
@@ -2326,10 +2280,6 @@ export async function prepareVault(password: string): Promise<PreparedVault> {
     // which services the user holds, and which group they filed them under.
     await chrome.storage.local.remove([USAGE_HISTORY_KEY, ACTIVE_GROUP_KEY]).catch(() => {});
 
-    // And cloud backup's code: with it and this install's id, the copies on our
-    // server open without the password. Sealed now, while the key is in hand —
-    // not later, when something happens to read it.
-    await sealCodeUnderVault(masterKeyBytes, meta.vaultId);
   };
 
   // The whole commit under the accounts lock. Unlocked, an add in the scanner
@@ -2445,10 +2395,6 @@ export async function disableVault(password: string): Promise<void> {
       const opened = await openAll(now, meta.vaultId);
       await retryOperation(() => writeStamped(opened));
     }
-
-    // Cloud backup's code was sealed under this vault; once its metadata is
-    // gone nothing could open it, and backups would stop without a word.
-    await openCodeFromVault(masterKeyBytes, meta.vaultId);
 
     await clearVaultMeta();
   });

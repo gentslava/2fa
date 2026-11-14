@@ -8,7 +8,6 @@
 // hole underneath it.
 
 import { generateRandomColor, parseQRCode, UnsupportedOTPTypeError, type ParsedOTPAuth } from './qr-parser';
-import { AccountLimitError, type AddOrigin } from '@/billing/gate';
 import { cleanSecret } from './totp';
 import { addMultipleAccounts, VaultLockedError } from './storage';
 import { describeFileImport } from './import-message';
@@ -143,7 +142,7 @@ export interface URIImportOutcome {
  * taught one of them. A file the extension itself had just written came back as
  * "invalid backup file" on the path the onboarding sends people down.
  */
-export async function importURIList(text: string, language: Language, origin: AddOrigin): Promise<URIImportOutcome> {
+export async function importURIList(text: string, language: Language): Promise<URIImportOutcome> {
   const t = createT(language);
   const plan = planURIImport(text);
 
@@ -187,7 +186,7 @@ export async function importURIList(text: string, language: Language, origin: Ad
   }
 
   try {
-    const result = await addMultipleAccounts(accounts, origin);
+    const result = await addMultipleAccounts(accounts);
     return {
       kind: result.added > 0 && notes.length === 0 ? 'success' : 'info',
       // Not describeImport: that says "from QR code", and these came from a
@@ -196,8 +195,6 @@ export async function importURIList(text: string, language: Language, origin: Ad
       added: result.added,
     };
   } catch (error) {
-    // The paywall, not a message: billing/add.ts catches it above this call.
-    if (error instanceof AccountLimitError) throw error;
     if (error instanceof VaultLockedError) {
       return { kind: 'error', message: t('scan.lockedTitle') };
     }

@@ -3,7 +3,7 @@
 // export/import (which validates a fixed set of keys), and the update merge
 // (where clearing a field and never setting one have to end up identical).
 
-import { areas, check, flush, resetState, scenario, USER_ADD } from './harness';
+import { areas, check, flush, resetState, scenario } from './harness';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -59,7 +59,7 @@ export async function run(): Promise<void> {
   await storage.saveAccounts(ACCOUNTS);
   const exported = await storage.exportAccounts();
   await resetState();
-  await storage.importAccounts(exported, USER_ADD);
+  await storage.importAccounts(exported);
   await flush();
   const imported = await storage.getAccounts();
   check('every account came back', imported.length === 3, `got ${imported.length}`);
@@ -71,7 +71,7 @@ export async function run(): Promise<void> {
   scenario('A backup from before groups still imports');
   await resetState();
   const legacy = ACCOUNTS.map(({ group, ...rest }) => rest);
-  await storage.importAccounts(JSON.stringify(legacy), USER_ADD);
+  await storage.importAccounts(JSON.stringify(legacy));
   await flush();
   const fromLegacy = await storage.getAccounts();
   check('all accounts import', fromLegacy.length === 3, `got ${fromLegacy.length}`);
@@ -149,7 +149,7 @@ export async function run(): Promise<void> {
   await storage.saveAccounts(ACCOUNTS.map((a, i) => (i === 0 ? { ...a, pinned: true, groupRank: 2 } : a)));
   const withExtras = await storage.exportAccounts();
   await resetState();
-  await storage.importAccounts(withExtras, USER_ADD);
+  await storage.importAccounts(withExtras);
   await flush();
   const back = (await storage.getAccounts()).find(a => a.id === 'a1');
   check('the pin', back?.pinned === true);

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Camera, ChevronDown, ChevronRight, Chrome, HelpCircle, ImagePlus, KeyRound, Link2, Monitor, QrCode, Smartphone } from 'lucide-react';
 import { createT, type Language, type TranslationKey } from '@/utils/i18n';
-import { reportAddStep, reportOnboardPick } from '@/billing/onboarding';
 import { useHostRow } from '@/utils/host-row';
 
 /**
@@ -194,7 +193,6 @@ export function EmptyStateGuide({
   if (!openPath) {
     // The host's row first (utils/host-row.ts): the Mac app's "In the Chrome
     // extension", for someone who has just installed it beside the extension.
-    // Not counted as a pick: the server takes only the chooser's own ids.
     const choices = [
       ...(hostRow ? [{ id: 'host', icon: Chrome, tone: 'amber' as const, label: hostRow.label(), sub: hostRow.sub(), pick: hostRow.run }] : []),
       ...PATHS.map(path => ({
@@ -204,7 +202,6 @@ export function EmptyStateGuide({
         label: t(path.label),
         sub: path.sub && t(path.sub),
         pick: () => {
-          void reportOnboardPick(path.id);
           if (hasSteps(path)) onOpenPath(path);
           else run(path.action);
         },
@@ -238,7 +235,6 @@ export function EmptyStateGuide({
         {canScanPage && (
           <button
             onClick={() => {
-              void reportOnboardPick('page');
               onScanScreen();
             }}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm shadow-accent-600/30 transition-all hover:bg-accent-700 hover:shadow-md active:scale-[0.99]"
@@ -298,7 +294,6 @@ export function EmptyStateGuide({
             rows.current.asked = node;
           }}
           onClick={() => {
-            void reportOnboardPick('asked');
             onOpenPath(ASKED);
           }}
           className="mt-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-start text-xs font-medium text-accent-600 transition-colors hover:bg-accent-50 hover:text-accent-700 dark:text-accent-400 dark:hover:bg-dark-700 dark:hover:text-accent-300"
@@ -318,15 +313,12 @@ export function EmptyStateGuide({
       canScanPage={canScanPage}
       language={language}
       onAction={() => {
-        void reportAddStep('guide', `${openPath.id}_go`);
         run(openPath.action);
       }}
       onPasteLinks={() => {
-        void reportAddStep('guide', `${openPath.id}_paste`);
         onPasteLinks();
       }}
       onEnterKey={() => {
-        void reportAddStep('guide', `${openPath.id}_key`);
         onEnterKey();
       }}
       // Offered up front, before the camera is tried: the browser says nothing
@@ -336,7 +328,6 @@ export function EmptyStateGuide({
       onImage={
         openPath.action === 'camera'
           ? () => {
-              void reportAddStep('guide', `${openPath.id}_image`);
               onScanWithImage();
             }
           : undefined
@@ -426,7 +417,6 @@ function GuideSteps({ path, language, onAction, onPasteLinks, onEnterKey, onImag
         <>
           <button
             onClick={() => {
-              if (!showMore) void reportAddStep('guide', `${path.id}_more`);
               setShowMore(!showMore);
             }}
             aria-expanded={showMore}

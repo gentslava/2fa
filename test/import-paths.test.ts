@@ -7,7 +7,7 @@
 // the .txt this extension had just written for them and was told it was not a
 // backup file. What this suite pins down is that the doors agree.
 
-import { check, resetState, scenario, USER_ADD } from './harness';
+import { check, resetState, scenario } from './harness';
 
 const SECRET = 'JBSWY3DPEHPK3PXP';
 
@@ -29,13 +29,13 @@ export async function run(): Promise<void> {
     { ...base, id: '2', name: 'b@x.com', issuer: 'AWS', secret: 'KRSXG5CTMVRXEZLU', createdAt: 2 },
   ] as any);
 
-  const first = await uriImport.importURIList(exported.text, 'en', USER_ADD);
+  const first = await uriImport.importURIList(exported.text, 'en');
   check('both accounts land', first.added === 2, JSON.stringify(first));
   check('and it reports success', first.kind === 'success', first.kind);
   check('storage really holds them', (await storage.getAccounts()).length === 2);
 
   scenario('Importing the same list twice adds nothing the second time');
-  const second = await uriImport.importURIList(exported.text, 'en', USER_ADD);
+  const second = await uriImport.importURIList(exported.text, 'en');
   check('nothing new is written', second.added === 0, JSON.stringify(second));
   // Not an error: the file was read fine, the accounts were simply already here.
   check('and it is not reported as a failure', second.kind === 'info', second.kind);
@@ -43,7 +43,7 @@ export async function run(): Promise<void> {
 
   scenario('A file with nothing usable in it fails without writing');
   await resetState();
-  const nothing = await uriImport.importURIList('not a link\nnor this one', 'en', USER_ADD);
+  const nothing = await uriImport.importURIList('not a link\nnor this one', 'en');
   check('reported as an error', nothing.kind === 'error', nothing.kind);
   check('nothing was written', nothing.added === undefined && (await storage.getAccounts()).length === 0);
 
@@ -87,7 +87,7 @@ export async function run(): Promise<void> {
   // unlocked key lives, and clearing it alone leaves the session copy behind —
   // which is why the first draft of this scenario "passed" by importing fine.
   await vault.lock();
-  const locked = await uriImport.importURIList(`${link('locked@x.com')}\n`, 'en', USER_ADD);
+  const locked = await uriImport.importURIList(`${link('locked@x.com')}\n`, 'en');
   check('reported as an error', locked.kind === 'error', locked.kind);
   check('and nothing was written', locked.added === undefined, JSON.stringify(locked));
 
@@ -325,8 +325,7 @@ async function otherAppsFiles(): Promise<void> {
   const qr = await import('@/utils/qr-parser');
   const pasted = await uriImport.importURIList(
     qr.buildOTPAuthURL({ name: 'a', issuer: 'B', secret: RFC.SHA1.secret, algorithm: 'SHA1', digits: 8, period: 30 }),
-    'en'
-  , USER_ADD);
+    'en');
   check('it says what was added', /1 account/.test(pasted.message), pasted.message);
   check('and never mentions a QR code', !/QR/.test(pasted.message), pasted.message);
 

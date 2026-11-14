@@ -1,21 +1,16 @@
-// The warning before a code goes into a page that imitates the account's site,
-// and the daily count that says how often codes go where.
+// The warning before a code goes into a page that imitates the account's site.
+// All checks and trusted-site choices stay on this device.
 //
 // See lookalike.ts for what counts as imitating, and why so little does.
 
 import type { Account } from '@/types';
-import { track } from '@/billing/events';
 import { accountsForSite } from './account-sites';
 import { lookalikeOf, referencesFor, type Lookalike } from './lookalike';
 import { getBaseDomain, recordAccountUsage, siteHistory } from './suggestions';
 import { isVaultEnabled } from './vault';
 
-/** How the code was about to leave: copied from our window, or typed into the page. */
-export type CodeVia = 'copy' | 'fill';
-
 const ENABLED_KEY = 'siteWarnEnabled';
 const TRUSTED_KEY = 'siteWarnTrusted';
-const DAILY_KEY = 'codeSitesDaily';
 
 type Trusted = Record<string, string[]>;
 
@@ -99,72 +94,4 @@ export async function trustSite(hostname: string, accountId: string): Promise<vo
   await writeTrusted(trusted);
   // And it is evidence about the site, the same as a pick for it would be.
   await recordAccountUsage(hostname, accountId, 'site').catch(() => {});
-}
-
-export function reportSiteWarn(via: CodeVia, warning: Lookalike): void {
-  void track('site_warn', { via, kind: warning.kind, basis: warning.basis });
-}
-
-export function reportSiteWarnAnswer(via: CodeVia, warning: Lookalike, proceed: boolean): void {
-  void track('site_warn_answer', { via, kind: warning.kind, basis: warning.basis, proceed });
-}
-
-// --- How often codes go where -------------------------------------------------
-// One event a day at most, with counts and nothing else: no site, no account.
-// `here` — the page is one the account was tied to or used on; `elsewhere` —
-// the account has such pages and this is not one; `unknown` — it has none yet;
-// `warned` — the warning above was shown.
-
-interface Daily {
-  day: string;
-  copy: number;
-  fill: number;
-  here: number;
-  elsewhere: number;
-  unknown: number;
-  warned: number;
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function emptyDay(day: string): Daily {
-  return { day, copy: 0, fill: 0, here: 0, elsewhere: 0, unknown: 0, warned: 0 };
-}
-
-/**
- * Count one code that went to a page (copied with it open, or filled into it).
- * Sends the previous day's counts when the day has turned.
- */
-export async function countCodeUse(
-  via: CodeVia,
-  hostname: string | null | undefined,
-  account: Account,
-  warned: boolean
-): Promise<void> {
-  if (!hostname) return;
-  try {
-    const domain = getBaseDomain(hostname);
-    const tied = accountsForSite(hostname, [account]).length > 0;
-    const usedOn = (await siteHistory()).get(account.id) ?? [];
-    const sites = Array.isArray(account.sites) ? account.sites.length : 0;
-    const where = tied || usedOn.includes(domain) ? 'here' : usedOn.length > 0 || sites > 0 ? 'elsewhere' : 'unknown';
-
-    const found = await chrome.storage.local.get(DAILY_KEY);
-    const stored = found[DAILY_KEY] as Daily | undefined;
-    const day = today();
-    let counts = stored && typeof stored === 'object' && typeof stored.day === 'string' ? stored : emptyDay(day);
-    if (counts.day !== day) {
-      const { day: _sent, ...previous } = counts;
-      await track('code_sites', { ...previous });
-      counts = emptyDay(day);
-    }
-    counts[via] += 1;
-    counts[where] += 1;
-    if (warned) counts.warned += 1;
-    await chrome.storage.local.set({ [DAILY_KEY]: counts });
-  } catch {
-    // Counting must not break the thing counted.
-  }
 }

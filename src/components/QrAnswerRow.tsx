@@ -9,15 +9,13 @@ interface QrAnswerFoldProps {
   icon: LucideIcon;
   label: string;
   how: string;
-  /** Reported the first time it opens: which answers people give is the point. */
-  onOpen: () => void;
 }
 
 /**
  * An answer nothing here can act on: the code is on a page this window cannot
  * go to, or does not exist yet. What to do unfolds under it.
  */
-export function QrAnswerFold({ icon: Icon, label, how, onOpen }: QrAnswerFoldProps) {
+export function QrAnswerFold({ icon: Icon, label, how }: QrAnswerFoldProps) {
   const [open, setOpen] = useState(false);
   const howRef = useRef<HTMLParagraphElement>(null);
 
@@ -31,7 +29,6 @@ export function QrAnswerFold({ icon: Icon, label, how, onOpen }: QrAnswerFoldPro
         type="button"
         aria-expanded={open}
         onClick={() => {
-          if (!open) onOpen();
           setOpen(!open);
         }}
         className={QR_ANSWER_ROW}

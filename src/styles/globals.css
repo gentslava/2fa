@@ -340,7 +340,7 @@
   .anim-pop {
     animation: popIn 170ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }
-  /* A view that covers the popup: Add, Edit, Share, Pro. */
+  /* A view that covers the popup: Add, Edit, Share. */
   .anim-sheet {
     animation: sheetIn 160ms ease-out backwards;
   }

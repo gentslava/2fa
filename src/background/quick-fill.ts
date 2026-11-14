@@ -11,7 +11,7 @@ import type { Account } from '@/types';
 import { getAccounts } from '@/utils/storage';
 import { VaultLockedError } from '@/utils/vault';
 import { getFillCandidate, hostnameOf, recordAccountUsage } from '@/utils/suggestions';
-import { checkSite, countCodeUse } from '@/utils/site-check';
+import { checkSite } from '@/utils/site-check';
 import { loadTimeOffset, tryGenerateTOTP } from '@/utils/totp';
 import { checkTimeSync } from '@/utils/time-sync';
 import { isQuickFillEnabled, noteFillRequest, notePickPrompt } from '@/utils/quick-fill';
@@ -20,7 +20,6 @@ import { openAppFor, openSidePanelInGesture } from './open-mode';
 import { detectLanguage, matchLanguage, type Language } from '@/utils/language';
 import { executeFill, injectFill as inject, MIN_REMAINING_SEC } from './quick-fill-inject';
 import { workerT, type WorkerKey } from './strings';
-import { reportCodeUsed } from '@/billing/onboarding';
 
 export const MENU_ID = 'quick-fill';
 /**
@@ -236,8 +235,6 @@ export async function runQuickFill(invocation: Invocation, panel: Promise<boolea
   if (hostname && outcome !== 'skipped') {
     await recordAccountUsage(hostname, account.id, 'site').catch(() => {});
   }
-  if (outcome === 'filled' || outcome === 'copied') void reportCodeUsed(outcome === 'filled' ? 'fill' : 'copy');
-  if (outcome === 'filled' || outcome === 'copied') void countCodeUse(copyOnly ? 'copy' : 'fill', hostname, account, false);
 }
 
 /**

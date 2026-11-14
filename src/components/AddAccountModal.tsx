@@ -10,7 +10,6 @@ import { decodeQrFromImage } from '@/utils/qr-decode';
 import { ModalHeader } from './ModalHeader';
 import { GroupInput } from './GroupInput';
 import { createT, type Language } from '@/utils/i18n';
-import { reasonOfKey, reportAddCancel, reportAddFail, reportAddStep } from '@/billing/onboarding';
 import { looksLikeURIList } from '@/utils/uri-import';
 import { steamSecretToBase32 } from '@/utils/import-formats';
 
@@ -110,18 +109,9 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
    */
   const [missed, setMissed] = useState(false);
 
-  // Reported for the admin's view of where adds go wrong (billing/onboarding.ts):
-  // the tab shown, each way of reading a code, each refusal, and leaving.
-  useEffect(() => {
-    void reportAddStep(tab, 'open');
-    // Once per opening; a tab change reports itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Shows a refusal and reports which one it was. */
-  const fail = (flow: 'manual' | 'qr', key: Parameters<typeof t>[0]) => {
+  /** Show a validation refusal in the chosen language. */
+  const fail = (key: Parameters<typeof t>[0]) => {
     setError(t(key));
-    void reportAddFail(flow, reasonOfKey(key));
   };
 
   /** The field a refusal is about: marked, and where the cursor goes. */
@@ -131,10 +121,9 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     document.getElementById(`${ids}-${field}`)?.focus();
   };
 
-  /** A save that threw: its own words on screen, only the fact in the report. */
-  const failSave = (flow: 'manual' | 'qr', message: string) => {
+  /** Show why saving failed without losing the form's contents. */
+  const failSave = (message: string) => {
     setError(message);
-    void reportAddFail(flow, 'save_failed');
   };
 
   useEffect(() => {
@@ -168,9 +157,9 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     // is no answer to an empty field.
     const secretGiven = cleanSecret(secret) !== '';
     if (!accountName || !secretGiven) {
-      if (!accountName && !secretGiven) fail('manual', 'addAccount.errorNameRequired');
-      else if (!secretGiven) fail('manual', 'addAccount.errorSecretMissing');
-      else fail('manual', 'addAccount.errorNameMissing');
+      if (!accountName && !secretGiven) fail('addAccount.errorNameRequired');
+      else if (!secretGiven) fail('addAccount.errorSecretMissing');
+      else fail('addAccount.errorNameMissing');
       pointAt(!secretGiven ? 'secret' : 'name');
       return;
     }
@@ -187,7 +176,6 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     if (!validateSecret(usableSecret)) {
       const problem = secretProblem(usableSecret);
       fail(
-        'manual',
         problem === 'code'
           ? 'addAccount.errorSecretIsCode'
           : problem === 'short'
@@ -204,7 +192,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     // account whose code never changes and never works. Nothing downstream can
     // recover from it, so it is caught here.
     if (!Number.isFinite(period) || period < 1) {
-      fail('manual', 'addAccount.errorInvalidPeriod');
+      fail('addAccount.errorInvalidPeriod');
       return;
     }
 
@@ -246,20 +234,18 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     // only the hand-typed path did not.
     setSaving(true);
     try {
-      // False: the free limit stopped it and the paywall was closed without
-      // Pro. The screen stays, with what was typed, for after the upgrade.
+      // A caller may keep the form open when an add did not finish.
       if ((await onAdd(account)) === false) return;
       onClose();
     } catch (err) {
       console.error('Could not save the account:', err);
-      fail('manual', 'addAccount.errorSaveFailed');
+      fail('addAccount.errorSaveFailed');
     } finally {
       setSaving(false);
     }
   };
 
   const handleClose = () => {
-    void reportAddCancel(tab, 'closed');
     onClose();
   };
 
@@ -282,7 +268,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     // One form holds one account. A migration link holds however many the user
     // exported, so saying where they go is more use than failing quietly.
     if (/^otpauth-migration:\/\//i.test(trimmed)) {
-      fail('manual', 'addAccount.pastedMigration');
+      fail('addAccount.pastedMigration');
       return;
     }
 
@@ -313,19 +299,17 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
       }
     } catch (error) {
       // Understood and refused, not unreadable: say which refusal it was.
-      if (error instanceof UnsupportedOTPTypeError) fail('manual', qrFailureKey(trimmed, error));
+      if (error instanceof UnsupportedOTPTypeError) fail(qrFailureKey(trimmed, error));
     }
   };
 
   const handleTabChange = (newTab: 'manual' | 'qr') => {
-    if (newTab !== tab) void reportAddStep(newTab, 'open');
     setTab(newTab);
     setError('');
     setMissed(false);
   };
 
-  const openCameraPage = (step: string) => {
-    void reportAddStep('qr', step);
+  const openCameraPage = () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('scan.html') });
   };
 
@@ -339,7 +323,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
         // The capture is of the tab this popup sits over, and most of the
         // empty ones were taken with no code on it: that is a different
         // instruction from "try a clearer picture".
-        fail('qr', source === 'screen' ? 'addAccount.errorNoQrScreen' : 'addAccount.errorNoQr');
+        fail(source === 'screen' ? 'addAccount.errorNoQrScreen' : 'addAccount.errorNoQr');
         if (source === 'screen') setMissed(true);
         return;
       }
@@ -373,7 +357,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
             if ((await onAdd(accountsToAdd, parsed.batch, parsed.skipped ?? 0)) === false) return;
           } catch (err) {
             console.error('Could not save the scanned accounts:', err);
-            failSave('qr', saveErrorMessage(err, t));
+            failSave(saveErrorMessage(err, t));
             return;
           }
           console.log(`Successfully added ${accountsToAdd.length} accounts from migration`);
@@ -400,7 +384,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
           if ((await onAdd(account, undefined, undefined, 'qr')) === false) return;
         } catch (err) {
           console.error('Could not save the scanned account:', err);
-          failSave('qr', saveErrorMessage(err, t));
+          failSave(saveErrorMessage(err, t));
           return;
         }
         onClose();
@@ -415,17 +399,17 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
         // the extension's own chrome.
         console.error('Failed to parse QR code (content withheld)');
         // Ours but unreadable says so; "invalid QR" is for everything else.
-        fail('qr', qrFailureKey(result));
+        fail(qrFailureKey(result));
       }
     } catch (err) {
       console.error('QR scan error:', err);
       if (err instanceof UnsupportedOTPTypeError) {
-        fail('qr', qrFailureKey('', err));
+        fail(qrFailureKey('', err));
         return;
       }
       // Only decoding is left in this try — saving has its own — so this is an
       // image that could not be read, not a reason to print its internals.
-      fail('qr', 'addAccount.errorInvalidQR');
+      fail('addAccount.errorInvalidQR');
     }
   };
 
@@ -451,7 +435,6 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
     // did nothing at all.
     input.value = '';
     if (!file) return;
-    void reportAddStep('qr', 'image');
     await readExclusively(() => processQRFile(file));
   };
 
@@ -474,10 +457,9 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
 
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      void reportAddStep('qr', 'drop');
       await readExclusively(() => processQRFile(file));
     } else {
-      fail('qr', 'addAccount.errorDropImage');
+      fail('addAccount.errorDropImage');
     }
   };
 
@@ -487,7 +469,6 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
       try {
         setError('');
         setScanning(true);
-        void reportAddStep('qr', 'screen');
         const dataUrl = await captureCurrentTab();
 
         // Convert the captured data URL into a File for the QR decoder.
@@ -504,7 +485,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
         // a restricted page (chrome://, Web Store, PDFs, other extensions).
         // Either beats the raw system error, which reads as "it just broke".
         const noAccess = /activeTab|all_urls|permission/i.test(err instanceof Error ? err.message : String(err));
-        fail('qr', noAccess ? 'addAccount.errorNoAccess' : 'addAccount.errorScreenHint');
+        fail(noAccess ? 'addAccount.errorNoAccess' : 'addAccount.errorScreenHint');
         setMissed(true);
       } finally {
         setScanning(false);
@@ -813,7 +794,7 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
               </div>
 
               <button
-                onClick={() => openCameraPage('camera_page')}
+                onClick={() => openCameraPage()}
                 className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-700 hover:bg-gray-50 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-200 font-medium text-sm transition-all"
               >
                 <Camera size={16} />
@@ -861,9 +842,8 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
                         icon={Globe}
                         label={t('addAccount.missSite')}
                         how={t('addAccount.missSiteHow')}
-                        onOpen={() => void reportAddStep('qr', 'miss_site')}
                       />
-                      <button onClick={() => openCameraPage('miss_camera')} className={QR_ANSWER_ROW}>
+                      <button onClick={() => openCameraPage()} className={QR_ANSWER_ROW}>
                         <Smartphone size={16} className="shrink-0" />
                         {t('addAccount.missPhone')}
                       </button>
@@ -871,11 +851,9 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
                         icon={Clock}
                         label={t('addAccount.missNone')}
                         how={t('addAccount.missNoneHow')}
-                        onOpen={() => void reportAddStep('qr', 'miss_none')}
                       />
                       <button
                         onClick={() => {
-                          void reportAddStep('qr', 'miss_key');
                           handleTabChange('manual');
                         }}
                         className={QR_ANSWER_ROW}
@@ -898,7 +876,6 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
               <button
                 type="button"
                 onClick={() => {
-                  void reportAddStep(tab, 'to_import');
                   onImport();
                 }}
                 className="font-medium text-accent-600 hover:underline dark:text-accent-400"
@@ -909,7 +886,6 @@ export function AddAccountModal({ onClose, onAdd, language, groups = [], default
               <button
                 type="button"
                 onClick={() => {
-                  void reportAddStep(tab, 'to_paste');
                   onPasteLinks();
                 }}
                 className="font-medium text-accent-600 hover:underline dark:text-accent-400"

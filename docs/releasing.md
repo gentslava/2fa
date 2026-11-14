@@ -19,26 +19,10 @@ true; the order is not cosmetic.
 - `docs/release-notes/v<version>.md` exists and covers **everything the update modal
   announces**. Whoever arrives from GitHub sees only this file — no site page,
   no modal. In 1.12.0 the headline feature was missing from it entirely.
-- `src/utils/update-notes.ts` has an entry for the version: one short line per
-  change, biggest first — unless the release is deliberately quiet (1.14.0 has
-  none: Pro is not announced inside the extension before it is switched on).
-- The site is ready in the same release: `EXTENSION_VERSION` and
-  `RELEASE_VERSIONS` in `src/product.ts` / `src/releases.ts`, and
-  `src/i18n/whats-new/<version>/` in all twenty languages.
-- Billing (since 1.14.0):
-  - `dist/` is built **without** `BILLING_ENV`/`BILLING_API` in the environment.
-    A store build trusts the production signing key only and talks to
-    `https://api.authenticator.sh`; `check:bundle` fails a build that carries
-    the preview or test key or a local server address.
-  - For **1.14.0 only**: set `STORE_RELEASE_DATE` in `src/billing/config.ts`
-    to 00:00 UTC of the day the zip is uploaded — too early is safe, too late
-    is not. Backups exported before it, and accounts arriving through Chrome
-    sync that were made before it (and before this install existed), make an
-    install legacy.
-  - The server (`../server`) is deployed and `https://api.authenticator.sh/v1/health`
-    answers with the production `kid` that `src/billing/keys.ts` lists.
-  - The listing's privacy disclosures still match `README.md` → "What is sent
-    to our server" (see step 5).
+- `src/utils/update-notes.ts` describes changes relevant to this fork.
+- Run `npm run typecheck`, `npm test`, `npm run build`, `npm run check:bundle` and `npm run test:e2e`.
+- The bundle must contain no upstream billing endpoint and must keep the restrictive network policy in `public/manifest.json`. No billing-server deployment or environment configuration is required.
+- This fork does not operate the upstream website or Chrome Web Store listing. Publish only to destinations owned by the fork maintainer.
 
 ## 1. One build pass, and no rebuild after it
 
@@ -92,7 +76,7 @@ with a two-line summary of what the release is:
 ```bash
 git commit                     # version bump + release notes + the work itself
 git tag -a v<version>
-git push origin main
+git push origin master
 git push origin v<version>     # separate command — `git push` does not do this
 ```
 
@@ -100,25 +84,9 @@ The tag must point at the commit the build came from, because "check out the
 matching tag and rebuild" is a published instruction. Documentation-only commits
 afterwards are fine and do not move the tag — `dist/` does not contain them.
 
-## 4. Deploy the site
+## 4. Distribution metadata
 
-Only now. `src/banner.ts` puts `/releases/tag/v<version>` on every page in every
-locale, and `pnpm check:links` fails when that URL 404s. The extension's own
-"learn more" link points at the site by version and is redirected to the newest
-page when the site has not published that version yet — so the site may lead the
-store, but the tag must never lag the site.
-
-## 5. Chrome Web Store
-
-Upload `authenticator-v<version>.zip` and submit for review.
-
-Since 1.14.0 the extension sends data to our server, and the item's
-**Privacy practices** tab must say so, in line with README → "What is sent to
-our server": *Personally identifiable information* (the email of a buyer, via
-Stripe), *Location* (country, from the request), *User activity* (the billing
-events), and the certification that the data is not sold or used for anything
-unrelated to the extension. Tick *This item offers in-app purchases* in the
-store listing tab.
+The fork has no in-app purchases, analytics or operator-hosted backup. Any distribution privacy disclosures must describe the fork's actual network behavior in README, including the clock sources, optional Chrome Sync and user-opened external pages. Do not reuse upstream's billing disclosures or publish to its listing.
 
 If the permissions in `public/manifest.json` changed, the form asks for a
 justification per permission and the review is a slower, human one — days to
@@ -187,7 +155,7 @@ long as the user's auto-lock setting allows, so it never touches disk;
 by default and removed from Google's servers when they turn it off. Nothing about
 the pages they visit is stored. Since 1.14.0 a daily check-in with our server
 carries how many accounts there are - a number, never an account, secret or
-code - for the free plan and Pro. Without this permission the extension cannot remember a single
+code. Without this permission the extension cannot remember a single
 account between one click of the toolbar icon and the next, which is the whole
 function.
 

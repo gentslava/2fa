@@ -13,7 +13,7 @@
 // an encrypted Steam Desktop Authenticator file, size limits, and Base64 that
 // arrives wrapped or URL-safe.
 
-import { check, resetState, scenario, USER_ADD } from './harness';
+import { check, resetState, scenario } from './harness';
 
 const SECRET = 'JBSWY3DPEHPK3PXP';
 
@@ -238,7 +238,7 @@ export async function run(): Promise<void> {
   check('line 2 is counter-based', listPlan.hotp.join() === '2', JSON.stringify(listPlan.hotp));
   check('line 3 is imported', listPlan.accounts.length === 1);
   await resetState();
-  const listOutcome = await uriImport.importURIList(list, 'en', USER_ADD);
+  const listOutcome = await uriImport.importURIList(list, 'en');
   check('the message says both, not "counter-based" for the MD5 line',
     /can't generate/.test(listOutcome.message) && /counter-based/.test(listOutcome.message), listOutcome.message);
 

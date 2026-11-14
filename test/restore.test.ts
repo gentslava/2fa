@@ -7,7 +7,7 @@
 // must not disturb the records the live store is holding for a vault this
 // device cannot open.
 
-import { areas, backupRows, check, faults, flush, resetState, scenario, setBackupRows, throwsNamed, USER_ADD } from './harness';
+import { areas, backupRows, check, faults, flush, resetState, scenario, setBackupRows, throwsNamed } from './harness';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -79,7 +79,7 @@ export async function run(): Promise<void> {
     digits: 6,
     period: 30,
     createdAt: 3,
-  } as any, USER_ADD);
+  } as any);
   await flush();
   await storage.deleteAccount('a1');
   await flush();

@@ -9,14 +9,7 @@ type TranslationKeys = {
   'header.language': string;
 
   // The bell in the header and its notifications (NotificationBell)
-  'notices.title': string;
-  'notices.empty': string;
-  'notices.new': string;
 
-  // The cloud in the header while cloud backup is on (CloudSyncIndicator)
-  'cloudSync.synced': string;
-  'cloudSync.syncing': string;
-  'cloudSync.problem': string;
 
   // Search
   'search.placeholder': string;
@@ -656,126 +649,7 @@ type VaultTranslationKeys = {
 // language must still define every key.
 
 
-/** The paywall, Pro in Settings and the free-limit hints (billing/). */
-type BillingTranslationKeys = {
-  'paywall.back': string;
-  'paywall.importOver': string;
-  'paywall.importNoRoom': string;
-  'paywall.backup.title': string;
-  'paywall.planMonth': string;
-  'paywall.planYear': string;
-  'paywall.planLife': string;
-  'paywall.planPass': string;
-  'paywall.perMonth': string;
-  'paywall.perYear': string;
-  'paywall.once': string;
-  'paywall.yearNote': string;
-  'paywall.lifeNote': string;
-  'paywall.passNote': string;
-  'paywall.monthNote': string;
-  'paywall.save': string;
-  'paywall.trial': string;
-  'paywall.continue': string;
-  'paywall.opening': string;
-  'paywall.checkoutOpened': string;
-  'paywall.addFree': string;
-  'paywall.haveKey': string;
-  'paywall.keyPlaceholder': string;
-  'paywall.activate': string;
-  'paywall.restore': string;
-  'paywall.restoreHint': string;
-  'paywall.emailPlaceholder': string;
-  'paywall.send': string;
-  'paywall.restoreSent': string;
-  'paywall.unavailable': string;
-  'paywall.retry': string;
-  'billing.error.network': string;
-  'billing.error.invalidKey': string;
-  'billing.error.inactive': string;
-  'billing.error.deviceLimit': string;
-  'billing.error.payments': string;
-  'billing.error.rateLimited': string;
-  'billing.error.generic': string;
-  'billing.activated': string;
-  'paywall.priceChanged': string;
-  'billing.heldAdded': string;
-  'billing.heldWaiting': string;
-  'billing.heldDiscard': string;
-  'pro.title': string;
-  'pro.statusFree': string;
-  'pro.statusUnlimitedFree': string;
-  'pro.statusLife': string;
-  'pro.statusSub': string;
-  'pro.statusPass': string;
-  'pro.statusComp': string;
-  'pro.keyHint': string;
-  'pro.get': string;
-  'pro.support': string;
-  'pro.supportHint': string;
-  'pro.manage': string;
-  'pro.removeHere': string;
-  'pro.removeConfirmTitle': string;
-  'pro.removeConfirmBody': string;
-  'pro.removeConfirm': string;
-  'pro.removed': string;
-  'pro.openCheckout': string;
-  'pro.checkNow': string;
-  'cloud.title': string;
-  'cloud.teaser': string;
-  'cloud.hintOff': string;
-  'cloud.turnOn': string;
-  'cloud.needCode': string;
-  'cloud.codeLabel': string;
-  'cloud.continue': string;
-  'cloud.wrongCode': string;
-  'cloud.damaged': string;
-  'cloud.failed': string;
-  'cloud.lostCode': string;
-  'cloud.startOverTitle': string;
-  'cloud.startOverBody': string;
-  'cloud.startOverConfirm': string;
-  'cloud.onLast': string;
-  'cloud.onNoCopy': string;
-  'cloud.syncHint': string;
-  'cloud.lapsed': string;
-  'cloud.backupNow': string;
-  'cloud.backingUp': string;
-  'cloud.backedUp': string;
-  'cloud.thisBrowser': string;
-  'cloud.otherBrowser': string;
-  'cloud.restoreConfirmTitle': string;
-  'cloud.restoreConfirmBody': string;
-  'cloud.turnOff': string;
-  'cloud.turnOffTitle': string;
-  'cloud.turnOffBody': string;
-  'cloud.turnOffConfirm': string;
-  'cloud.turnedOff': string;
-  'cloud.setup.title': string;
-  'cloud.setup.text': string;
-  'cloud.setup.download': string;
-  'cloud.setup.warning': string;
-  'cloud.setup.confirm': string;
-  'cloud.setup.mismatch': string;
-  'cloud.setup.finish': string;
-  'cloud.setup.working': string;
-  'cloud.setup.done': string;
-  'cloud.loading': string;
-  'cloud.listFailed': string;
-  'cloud.lastFailed': string;
-  'cloud.noLicenseHere': string;
-  'cloud.keyRestoreLink': string;
-  'cloud.find': string;
-  'cloud.noCopies': string;
-  'cloud.resetHint': string;
-  'cloud.showCode': string;
-  'cloud.hideCode': string;
-  'cloud.nothing': string;
-  'cloud.setup.taken': string;
-  'scan.limitTitle': string;
-  'scan.limitBody': string;
-};
-
 /** A complete set of strings for one language. */
-export type TranslationStrings = TranslationKeys & VaultTranslationKeys & BillingTranslationKeys;
+export type TranslationStrings = TranslationKeys & VaultTranslationKeys;
 
 export type TranslationKey = keyof TranslationStrings;

@@ -530,10 +530,3 @@ export function failureCount(): number {
 export function currentScenarioName(): string {
   return currentScenario;
 }
-
-/**
- * The origin every pre-billing test adds accounts with: a person, and no
- * policy yet — so no limit, which is exactly what these tests assumed before
- * the free limit existed. The limit itself is tested in billing.test.ts.
- */
-export const USER_ADD = { kind: 'user', gate: { policy: null, entitled: false } } as const;

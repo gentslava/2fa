@@ -16,7 +16,7 @@ export interface Account {
   /**
    * When this account was last changed on any device — added, renamed, moved,
    * pinned — as stampNow on the device that changed it. What cloud sync
-   * compares (billing/cloud-merge.ts): the newer edit of one seed wins, and a
+   * compares (utils/cloud-merge.ts): the newer edit of one seed wins, and a
    * deletion wins over an edit older than itself. Absent on records written
    * before sync, which then count from `createdAt`.
    *

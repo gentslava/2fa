@@ -8,7 +8,7 @@
 // these scenarios pin down.
 
 import { createHmac } from 'node:crypto';
-import { check, resetState, scenario, USER_ADD } from './harness';
+import { check, resetState, scenario } from './harness';
 import fixtures from './fixtures/import-formats.json';
 
 /** RFC 6238's SHA1 seed, ASCII "12345678901234567890". */
@@ -224,14 +224,14 @@ export async function run(): Promise<void> {
     await resetState();
     const plain = { ...steamAccount, id: 't1', type: undefined, secret: 'JBSWY3DPEHPK3PXP', digits: 6 };
     delete (plain as any).type;
-    await storage.addMultipleAccounts([steamAccount, plain], USER_ADD);
+    await storage.addMultipleAccounts([steamAccount, plain]);
 
     const exported = JSON.parse(backupFile.buildPlainBackupFile(await storage.getAccounts()));
     check('the export writes type: steam', exported.accounts.some((a: any) => a.type === 'steam'));
     check('and nothing for TOTP', exported.accounts.filter((a: any) => 'type' in a).length === 1);
 
     await resetState();
-    await storage.importAccounts(JSON.stringify(exported), USER_ADD);
+    await storage.importAccounts(JSON.stringify(exported));
     const back = await storage.getAccounts();
     check('both come back', back.length === 2, String(back.length));
     check('Steam is still Steam', back.find(a => a.secret === SEED)?.type === 'steam');
@@ -254,7 +254,7 @@ export async function run(): Promise<void> {
     const other = { ...asTotp, id: 'other', name: 'mail', group: undefined, secret: 'JBSWY3DPEHPK3PXP' };
     await storage.saveAccounts([asTotp, other] as any);
 
-    const report = await storage.importAccountList([{ ...steamAccount, id: 'fromfile', name: 'gamer' }], USER_ADD);
+    const report = await storage.importAccountList([{ ...steamAccount, id: 'fromfile', name: 'gamer' }]);
     const after = await storage.getAccounts();
     const card = after.find(a => a.secret === SEED);
     check('no second card', after.length === 2, String(after.length));
@@ -265,13 +265,13 @@ export async function run(): Promise<void> {
     const message = describeFileImport(report, 'en');
     check('and the message says so', message.includes('Steam Guard') && !message.includes('nothing was added'), message);
 
-    const again = await storage.importAccountList([{ ...steamAccount, id: 'fromfile' }], USER_ADD);
+    const again = await storage.importAccountList([{ ...steamAccount, id: 'fromfile' }]);
     check('a second import changes nothing', again.updated === 0 && again.alreadyHere === 1, JSON.stringify(again));
 
     // A scan takes the same door.
     await resetState();
     await storage.saveAccounts([asTotp] as any);
-    const scanned = await storage.addMultipleAccounts([{ ...steamAccount, id: 'scanned' }], USER_ADD);
+    const scanned = await storage.addMultipleAccounts([{ ...steamAccount, id: 'scanned' }]);
     check('a scan upgrades it too', scanned.updated === 1 && scanned.skipped === 0, JSON.stringify(scanned));
     check('in place', (await storage.getAccounts())[0]?.type === 'steam');
   }
@@ -282,18 +282,18 @@ export async function run(): Promise<void> {
     await storage.saveAccounts([steamAccount] as any);
     const asTotp = { ...steamAccount, id: 'fromfile', digits: 6 };
     delete (asTotp as any).type;
-    const report = await storage.importAccountList([asTotp], USER_ADD);
+    const report = await storage.importAccountList([asTotp]);
     const card = (await storage.getAccounts())[0];
     check('still Steam', card?.type === 'steam' && card?.digits === 5, JSON.stringify(card));
     check('counted as already here', report.alreadyHere === 1 && report.updated === 0, JSON.stringify(report));
-    check('a single add says it was already here', (await storage.addAccount({ ...asTotp, id: 'x' } as any, USER_ADD)) === false);
+    check('a single add says it was already here', (await storage.addAccount({ ...asTotp, id: 'x' } as any)) === false);
   }
 
   scenario('A text export with a Steam line imports as Steam');
   {
     await resetState();
     const file = backupFile.buildURIBackupFile([steamAccount]);
-    const outcome = await uriImport.importURIList(file.text, 'en', USER_ADD);
+    const outcome = await uriImport.importURIList(file.text, 'en');
     check('added', outcome.added === 1, JSON.stringify(outcome));
     check('as Steam', (await storage.getAccounts())[0]?.type === 'steam');
   }

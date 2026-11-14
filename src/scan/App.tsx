@@ -18,13 +18,6 @@ import { cameraPermissionState, classifyDenial, type DenialKind } from '@/utils/
 import type jsQRType from 'jsqr';
 import { Logo } from '@/components/Logo';
 import { FeedbackHost } from '@/components/FeedbackHost';
-import { PaywallHost } from '@/components/PaywallHost';
-import { addWithLimit } from '@/billing/add';
-import { reasonOfKey, reportAddCancel, reportAddFail, reportAddStep } from '@/billing/onboarding';
-import { finishHeldAdd, isHeld } from '@/billing/held-add';
-import { BILLING_KEYS } from '@/billing/state';
-import { hasPendingCheckout, syncBilling } from '@/billing/sync';
-import { accountLabel } from '@/utils/account-label';
 import { SupportFooter } from '@/components/SupportFooter';
 import { applyDocumentLanguage, createT, loadLanguage, resolveLanguage, type Language, type TranslationKey } from '@/utils/i18n';
 import { settingsFromChanges } from '@/utils/settings-watch';
@@ -50,9 +43,6 @@ type Status =
   // named in the result so the accounts are not simply missing later.
   | { kind: 'added'; outcome: ImportOutcome; group?: string; batch?: { index: number; total: number } }
   | { kind: 'locked' }
-  // Stopped by the free limit on the way to Checkout: kept, and added here once
-  // Pro is on (billing/held-add.ts). `label` names it; `ids` are its accounts.
-  | { kind: 'held'; label: string; ids: string[]; group?: string }
   // `how` is why: a setting that says Block, a question closed unanswered, or
   // the operating system — three different things to do (utils/camera-denial.ts).
   | { kind: 'denied'; how: DenialKind }
@@ -94,43 +84,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
     imageModeRef.current ? { kind: 'image' } : { kind: 'starting' }
   );
 
-  // Reported for the admin's view of where adds go wrong (billing/onboarding.ts):
-  // the page opening, the camera running, every way a scan ends without an
-  // account, and the tab closed before one was added.
-  useEffect(() => {
-    void reportAddStep('camera', 'open');
-  }, []);
-  const lastStatus = useRef<Status['kind']>('starting');
-  useEffect(() => {
-    lastStatus.current = status.kind;
-    if (status.kind === 'scanning') void reportAddStep('camera', 'scanning');
-    else {
-      const reason =
-        status.kind === 'denied'
-          ? { blocked: 'camera_denied', dismissed: 'camera_dismissed', system: 'camera_system' }[status.how]
-          : status.kind === 'noCamera'
-            ? 'no_camera'
-            : status.kind === 'busy'
-              ? 'camera_busy'
-              : status.kind === 'locked'
-                ? 'locked'
-                : status.kind === 'held'
-                  ? 'limit_held'
-                  : status.kind === 'error'
-                    ? reasonOfKey(status.body)
-                    : null;
-      // The same refusal again on "Try again" is the same person stuck, not a
-      // new one: counted once in a row, so the admin's numbers are people.
-      // Kept across the "starting" in between — "Try again" passes through it,
-      // and forgetting there sent each retry again. A scan that worked, or a
-      // different refusal, starts a new row.
-      if (reason && reason !== lastFail.current) void reportAddFail('camera', reason);
-      if (reason) lastFail.current = reason;
-      else if (status.kind === 'added') lastFail.current = null;
-    }
-  }, [status]);
-  const lastFail = useRef<string | null>(null);
-
   // The browser's question is still up: after a moment it is worth pointing at.
   const [slowStart, setSlowStart] = useState(false);
   useEffect(() => {
@@ -139,18 +92,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
     const timer = setTimeout(() => setSlowStart(true), 1200);
     return () => clearTimeout(timer);
   }, [status]);
-  useEffect(() => {
-    const leaving = () => {
-      if (lastStatus.current !== 'added') void reportAddCancel('camera', lastStatus.current);
-    };
-    window.addEventListener('pagehide', leaving);
-    return () => {
-      window.removeEventListener('pagehide', leaving);
-      // Embedded, closing the scanner is the leaving: the window stays.
-      if (embedded) leaving();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   /**
    * Every video input, listed once a grant makes the labels readable. An empty
    * label is kept empty and named at render, for the same reason as above.
@@ -224,40 +165,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
   useEffect(() => {
     applyDocumentLanguage(language);
   }, [language]);
-
-  // A code held for Pro on its way to Checkout: added as soon as Pro is on,
-  // whichever window it came on in. This tab stays open while the person pays
-  // in another, so coming back to it asks the server whether they have.
-  const statusRef = useRef(status);
-  statusRef.current = status;
-  useEffect(() => {
-    if (!chrome.storage?.onChanged?.addListener) return;
-    const settle = async () => {
-      const done = await finishHeldAdd();
-      if (!done || done.added + done.updated === 0) return;
-      const now = statusRef.current;
-      if (now.kind === 'held' && done.accounts.every(a => now.ids.includes(a.id))) {
-        setStatus({ kind: 'added', outcome: { added: done.added, updated: done.updated, skipped: 0, total: done.accounts.length, unsupported: 0 }, group: now.group });
-      } else {
-        toast('success', tRef.current('billing.heldAdded', accountLabel(done.accounts[0]!)));
-      }
-    };
-    const onChanged = (changes: Record<string, { newValue?: unknown }>, areaName: string) => {
-      if (areaName === 'local' && changes[BILLING_KEYS.entitlement]?.newValue) void settle();
-    };
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || statusRef.current.kind !== 'held') return;
-      void hasPendingCheckout().then(pending => (pending ? syncBilling({ force: true }) : undefined));
-    };
-    chrome.storage.onChanged.addListener(onChanged);
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
-    return () => {
-      chrome.storage.onChanged.removeListener(onChanged);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
-    };
-  }, []);
 
   const stopCamera = useCallback(() => {
     stopLoopRef.current?.();
@@ -347,27 +254,8 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
       }));
 
       try {
-        // A Google Authenticator export is an import; one code from a sign-up
-        // page is a new account — and is kept through Checkout, so the code
-        // does not have to be scanned again after paying.
-        const single = parsed.type !== 'migration';
-        const continuesBatch = !single && (parsed.batch?.index ?? 1) > 1;
-        const result = await addWithLimit('scan', origin => addMultipleAccounts(accounts, origin, { continuesBatch }), {
-          import: !single,
-          hold: single ? accounts : undefined,
-        });
-        if (!result) {
-          const ids = accounts.map(a => a.id);
-          // Gone to Checkout: waiting for Pro, and said so. Otherwise the
-          // paywall was left without Pro: nothing was written, and the card
-          // says so rather than going back to a camera that looks idle.
-          setStatus(
-            single && (await isHeld(ids))
-              ? { kind: 'held', label: accountLabel(accounts[0]!), ids, group: filteredGroup }
-              : { kind: 'error', title: 'scan.limitTitle', body: 'scan.limitBody' }
-          );
-          return;
-        }
+        const continuesBatch = parsed.type === 'migration' && (parsed.batch?.index ?? 1) > 1;
+        const result = await addMultipleAccounts(accounts, { continuesBatch });
         setStatus({
           kind: 'added',
           outcome: { ...result, unsupported: parsed.skipped ?? 0 },
@@ -619,10 +507,8 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
       decodingImageRef.current = true;
       setDecodingImage(true);
       try {
-        void reportAddStep('camera', 'image');
         const text = await decodeQrFromImage(file);
         if (!text) {
-          void reportAddFail('camera', 'image_no_qr');
           toast('error', tRef.current('addAccount.errorNoQr'));
           return;
         }
@@ -634,7 +520,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
           // handleDecoded read it, found no otpauth in it, and reset the guard
           // expecting a live camera loop — which its early return in the
           // camera path keeps running, but this path froze. Restart it.
-          void reportAddFail('camera', 'image_not_otpauth');
           toast('error', tRef.current('addAccount.errorInvalidQR'));
           // Back to the camera only if it was the camera that was running.
           if (imageModeRef.current) handledRef.current = false;
@@ -642,7 +527,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
         }
       } catch (error) {
         console.error('Could not read the uploaded image:', error);
-        void reportAddFail('camera', 'image_unreadable');
         toast('error', tRef.current('addAccount.errorNoQr'));
       } finally {
         decodingImageRef.current = false;
@@ -710,8 +594,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
         return { icon: CameraOff, tone: 'red', title: t('scan.noCameraTitle'), body: t('scan.noCameraBody') };
       case 'locked':
         return { icon: Lock, tone: 'yellow', title: t('scan.lockedTitle'), body: t('scan.lockedBody') };
-      case 'held':
-        return { icon: Lock, tone: 'yellow', title: t('scan.limitTitle'), body: t('billing.heldWaiting', status.label) };
       case 'error':
         return { icon: AlertTriangle, tone: 'red', title: t(status.title ?? 'scan.errorTitle'), body: t(status.body) };
       default:
@@ -895,18 +777,15 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
                     icon={Globe}
                     label={t('addAccount.missSite')}
                     how={t('addAccount.missSiteHow')}
-                    onOpen={() => void reportAddStep('camera', 'miss_site')}
                   />
                   <QrAnswerFold
                     icon={Smartphone}
                     label={t('scan.noCameraPhone')}
                     how={t('scan.noCameraPhoneHow')}
-                    onOpen={() => void reportAddStep('camera', 'miss_phone')}
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      void reportAddStep('camera', 'miss_key');
                       location.assign(chrome.runtime.getURL('popup.html?add=manual'));
                     }}
                     className={QR_ANSWER_ROW}
@@ -1023,7 +902,6 @@ export default function App({ embedded }: { embedded?: EmbeddedScanner }) {
           </div>
         </div>
         <FeedbackHost />
-        <PaywallHost language={language} />
       </div>
     </div>
   );
