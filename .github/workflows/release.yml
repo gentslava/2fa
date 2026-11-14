@@ -1,0 +1,113 @@
+name: Build and release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = json.loads(Path('package.json').read_text())['version']
+          manifest = json.loads(Path('public/manifest.json').read_text())
+          if not re.fullmatch(r'\d+(?:\.\d+){1,3}', version) or manifest['version'] != version:
+              raise SystemExit('package.json and manifest.json must have the same numeric version')
+          tag = f'v{version}'
+          if os.environ['GITHUB_REF_TYPE'] == 'tag' and os.environ['GITHUB_REF_NAME'] != tag:
+              raise SystemExit(f'The release tag must be {tag}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\ntag={tag}\n')
+          PY
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run check:bundle
+      - run: npm run package:release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: authenticator-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          release_state="$(gh release view "$RELEASE_TAG" --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || true)"
+          if [[ "$release_state" == published ]]; then
+            printf 'Version %s is already released. The new build is available in this run\x27s artifacts; bump the version to publish another release.\n' "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          tag_commit="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha 2>/dev/null || true)"
+          if [[ -n "$tag_commit" && "$tag_commit" != "$GITHUB_SHA" ]]; then
+            printf 'Tag %s points to another commit. Bump the version to release this build.\n' "$RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ -z "$tag_commit" ]]; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA"
+          fi
+
+          cat > release/notes.md <<EOF
+          Built from commit [$GITHUB_SHA]($GITHUB_SERVER_URL/$GH_REPO/commit/$GITHUB_SHA).
+
+          Download **authenticator.zip**, extract it, then open chrome://extensions,
+          enable Developer mode and choose **Load unpacked** for the extracted folder.
+
+          This build has no Pro billing, account limits or upstream analytics.
+          Local backups and optional Google Sync remain available.
+
+          The ZIP checksum and checksums of all unpacked files are attached.
+          [Build log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID).
+          EOF
+
+          if [[ "$release_state" == draft ]]; then
+            gh release upload "$RELEASE_TAG" release/authenticator.zip release/authenticator.zip.sha256 "release/SHA256SUMS-v$RELEASE_VERSION.txt" --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release/notes.md
+          else
+            gh release create "$RELEASE_TAG" release/authenticator.zip release/authenticator.zip.sha256 "release/SHA256SUMS-v$RELEASE_VERSION.txt" \
+              --verify-tag --draft --title "Authenticator $RELEASE_TAG" --notes-file release/notes.md
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+          printf '[Download ZIP](%s/%s/releases/latest/download/authenticator.zip)\n' "$GITHUB_SERVER_URL" "$GH_REPO" >> "$GITHUB_STEP_SUMMARY"

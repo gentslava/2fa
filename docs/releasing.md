@@ -1,131 +1,74 @@
 # Releasing
 
-Written after 1.12.0, where the built `dist/`, the checksums file and the packed
-zip were each produced at a different hour from a different tree, and the tag
-that is supposed to tie them together was not pushed at all — `git push` does
-not carry tags, and nothing complained.
+The [Build and release workflow](../.github/workflows/release.yml) runs on pushes
+to `master`, pushes of `v*` tags, and manual **Run workflow** requests. It uses
+Node.js 24, installs the locked dependencies, typechecks, builds once, checks
+the emitted extension and packages that exact `dist/` tree. It does not launch
+a browser.
 
-Three things must describe one build: the git tag, `SHA256SUMS-v<version>.txt`
-and the zip uploaded to the Web Store. [README.md](../README.md) and the
-"Verifying what we publish" section on the site both tell people to rebuild the
-tag and compare it against the sums. Every step below exists to keep that claim
-true; the order is not cosmetic.
+## Download the build
 
-## Before you start
+[Download authenticator.zip](https://github.com/gentslava/2fa/releases/latest/download/authenticator.zip)
+from the latest GitHub Release. Extract it and select the extracted directory
+with **Load unpacked** in `chrome://extensions` with Developer mode enabled.
 
-- `package.json` and `public/manifest.json` carry the same new version.
-  `scripts/checksums.js` refuses to write a file when `dist/` and the source
-  disagree, which is how a sums file named after the wrong release is avoided.
-- `docs/release-notes/v<version>.md` exists and covers **everything the update modal
-  announces**. Whoever arrives from GitHub sees only this file — no site page,
-  no modal. In 1.12.0 the headline feature was missing from it entirely.
-- `src/utils/update-notes.ts` describes changes relevant to this fork.
-- Run `npm run typecheck`, `npm test`, `npm run build`, `npm run check:bundle` and `npm run test:e2e`.
-- The bundle must contain no upstream billing endpoint and must keep the restrictive network policy in `public/manifest.json`. No billing-server deployment or environment configuration is required.
-- This fork does not operate the upstream website or Chrome Web Store listing. Publish only to destinations owned by the fork maintainer.
+Every successful run also uploads an Actions artifact, retained for 30 days,
+containing:
 
-## 1. One build pass, and no rebuild after it
+- `authenticator.zip` — extension files with `manifest.json` at the ZIP root.
+- `authenticator.zip.sha256` — SHA-256 of the ZIP itself.
+- `SHA256SUMS-v<version>.txt` — SHA-256 of every unpacked extension file.
+
+## Publish a version
+
+1. Set the same numeric version in `package.json`, both root-package version
+   fields in `package-lock.json`, and `public/manifest.json`.
+2. Describe the changes in `docs/release-notes/v<version>.md`.
+3. Commit and push to `master`. The workflow creates tag `v<version>` at the
+   exact build commit, uploads the checked assets to a draft release, and then
+   publishes it as Latest.
+
+An already published version is left unchanged. Subsequent commits at that
+version still produce Actions artifacts; bump the version for another release.
+An existing tag pointing to another commit is refused. A failed publication can
+be rerun: an unpublished draft at the same commit is completed, while published
+assets are preserved.
+
+Alternatively, create and push a normal `v<version>` tag yourself, or run the
+workflow manually on `master`. The tag must match the package and manifest
+version. No custom secrets are required: the release job uses `GITHUB_TOKEN`
+with `contents: write`. Build dependencies do not receive checkout credentials.
+
+## Package locally
 
 ```bash
 npm ci
-npm run verify                 # typecheck, tests, and a live probe of every external service
+npm run typecheck
 npm run build
-npm run checksums              # writes SHA256SUMS-v<version>.txt from dist/
-npm run checksums -- --check   # re-verify dist/ against that file
+npm run check:bundle
+npm run package:release
 ```
 
-`npm run verify` includes `check:deps`, which talks to the real time sources. A
-red run there means users are affected right now — it is not a formality to
-skip because the code did not change.
+The ZIP and checksum files are written to `release/`. Packaging uses fixed ZIP
+timestamps, stable file order and file permissions. It checks the existing
+per-file checksums before archiving, so a stale or changed `dist/` is refused.
 
-From here until the tag is pushed, do not run `npm run build` again. A rebuild
-produces a `dist/` that no longer matches the sums file, and nothing downstream
-notices except the person who tries to verify the release six months later.
-
-## 2. Package from that same `dist/`
+Verify a downloaded ZIP from the directory holding both the ZIP and its checksum:
 
 ```bash
-rm -f authenticator-v<version>.zip authenticator-v<version>.crx
-cd dist && zip -r -X -q ../authenticator-v<version>.zip . && cd ..
+shasum -a 256 -c authenticator.zip.sha256
 ```
 
-`rm` first: `zip` updates an existing archive in place rather than replacing it,
-so a stale file quietly survives inside the new one. Zipping from *inside*
-`dist/` is what puts `manifest.json` at the root, which is the only layout the
-Web Store accepts.
-
-The `.crx` is for people who install outside the store, and Chrome packs it from
-the command line — no GUI step:
+After extracting, run the per-file checksum check from the extracted directory:
 
 ```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --pack-extension="$PWD/dist" \
-  --pack-extension-key="$PWD/authenticator-key.pem" --no-message-box
-mv dist.crx authenticator-v<version>.crx
+shasum -a 256 -c /path/to/SHA256SUMS-v<version>.txt
 ```
 
-`authenticator-key.pem` is the extension's identity: the same key means the same
-extension id, and losing it means everyone installing outside the store has to
-install a stranger. It is `.gitignore`d (`*.pem`) and must stay that way.
-
-## 3. Commit, tag, and push both
-
-The release commit carries the version bump and the notes. The tag is annotated,
-with a two-line summary of what the release is:
-
-```bash
-git commit                     # version bump + release notes + the work itself
-git tag -a v<version>
-git push origin master
-git push origin v<version>     # separate command — `git push` does not do this
-```
-
-The tag must point at the commit the build came from, because "check out the
-matching tag and rebuild" is a published instruction. Documentation-only commits
-afterwards are fine and do not move the tag — `dist/` does not contain them.
-
-## 4. Distribution metadata
-
-The fork has no in-app purchases, analytics or operator-hosted backup. Any distribution privacy disclosures must describe the fork's actual network behavior in README, including the clock sources, optional Chrome Sync and user-opened external pages. Do not reuse upstream's billing disclosures or publish to its listing.
-
-If the permissions in `public/manifest.json` changed, the form asks for a
-justification per permission and the review is a slower, human one — days to
-weeks rather than hours. Current text is in the appendix below; keep it in sync
-with what the code actually does, because a reviewer checks.
-
-## 6. GitHub Release
-
-Create it from the tag, body from `docs/release-notes/v<version>.md`, with three
-assets attached:
-
-- `SHA256SUMS-v<version>.txt`
-- `authenticator-v<version>.zip`
-- `authenticator-v<version>.crx`
-
-All three are `.gitignore`d — the release is the only place they exist. A tag
-without a release renders as a bare page of source archives, which leaves the
-sums promise in the README and on the site unbacked and the site's own banner
-pointing at nothing worth reading.
-
-```bash
-gh release create v<version> --title "v<version>" \
-  --notes-file docs/release-notes/v<version>.md \
-  SHA256SUMS-v<version>.txt authenticator-v<version>.zip authenticator-v<version>.crx
-```
-
-Publishing before the store approves is fine, and usually better: the tag and
-the banner are already public, and the sums are the thing people are told to
-check. Say in the body that the store rollout follows separately, so someone
-seeing this version here and an older one in their browser reads it as a review
-queue rather than a broken update.
-
-## If review rejects
-
-Most rejections are about the listing — justifications, disclosures, wording —
-and cost nothing here. If one demands a code change, the version is spent: the
-Web Store will not take a second upload under the same number. Edit the release
-to say it never reached the store, and cut the next patch version. Do not move a
-tag that has been pushed.
+This repository does not publish to the upstream Chrome Web Store listing or
+operate the upstream website. Its distribution metadata must describe the
+network behavior in README: clock checks, optional browser-managed Google Sync,
+and user-opened external pages.
 
 ## Appendix: permission justifications
 
@@ -153,9 +96,7 @@ is the primary copy; `chrome.storage.session` holds the unlocked vault key for a
 long as the user's auto-lock setting allows, so it never touches disk;
 `chrome.storage.sync` is a second copy through the user's own Google account, on
 by default and removed from Google's servers when they turn it off. Nothing about
-the pages they visit is stored. Since 1.14.0 a daily check-in with our server
-carries how many accounts there are - a number, never an account, secret or
-code. Without this permission the extension cannot remember a single
+the pages they visit is sent to the operator. Without this permission the extension cannot remember a single
 account between one click of the toolbar icon and the next, which is the whole
 function.
 

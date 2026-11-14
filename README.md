@@ -4,15 +4,14 @@
 
 **TOTP codes in Chrome. No billing, no analytics, no account limit.**
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ebhcbenbgjmaebpgbldimndmfomjmphd?label=chrome%20web%20store&color=4285f4)](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd)
-[![Users](https://img.shields.io/chrome-web-store/users/ebhcbenbgjmaebpgbldimndmfomjmphd?label=users&color=4285f4)](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd)
-[![Rating](https://img.shields.io/chrome-web-store/rating/ebhcbenbgjmaebpgbldimndmfomjmphd?label=rating&color=e37400)](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd/reviews)
-[![Checks](https://img.shields.io/github/actions/workflow/status/authenticator-sh/2fa/checks.yml?branch=main&label=checks)](https://github.com/authenticator-sh/2fa/actions/workflows/checks.yml)
+[![Download ZIP](https://img.shields.io/github/v/release/gentslava/2fa?label=download)](https://github.com/gentslava/2fa/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/gentslava/2fa/release.yml?branch=master&label=build)](https://github.com/gentslava/2fa/actions/workflows/release.yml)
 [![Host permissions: none](https://img.shields.io/badge/host_permissions-none-34a853)](#permissions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4285f4)](LICENSE)
 
-[Install](https://chromewebstore.google.com/detail/2FA/ebhcbenbgjmaebpgbldimndmfomjmphd) ·
-[Website](https://authenticator.sh) ·
+[Download ZIP](https://github.com/gentslava/2fa/releases/latest/download/authenticator.zip) ·
+[Releases](https://github.com/gentslava/2fa/releases) ·
+[Upstream website](https://authenticator.sh) ·
 [How it works](https://authenticator.sh/how-it-works) ·
 [Security](https://authenticator.sh/security) ·
 [Privacy](https://authenticator.sh/privacy) ·
@@ -302,12 +301,22 @@ site repository at `authenticator.sh/s`.
   the site opens them; `test/fixtures/share-vectors.json` pins the exact bytes
   for six cases and both repositories assert against it.
 
+## Install from ZIP
+
+Download [authenticator.zip](https://github.com/gentslava/2fa/releases/latest/download/authenticator.zip)
+from the latest release, extract it, open `chrome://extensions`, enable
+**Developer mode** and select the extracted folder with **Load unpacked**.
+
+GitHub Actions builds every push to `master`. A new version is published as
+`v<version>` in Releases; builds of an already released version remain available
+as Actions artifacts. See [Releasing](docs/releasing.md).
+
 ## Building from Source
 
 ### Prerequisites
 
-- Node.js 20.x LTS
-- npm 10.x
+- Node.js 24.x LTS
+- npm and Python 3 (for packaging)
 
 ### Build
 
@@ -317,6 +326,15 @@ npm run build
 ```
 
 The resulting `dist/` directory is the unpacked extension.
+
+To create the same downloadable ZIP as GitHub Actions:
+
+```bash
+npm run check:bundle
+npm run package:release
+```
+
+The ZIP and its checksums are written to `release/`.
 
 ### Load in Chrome (development)
 
